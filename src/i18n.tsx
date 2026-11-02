@@ -29,6 +29,9 @@ const bn = {
   'hero.mood.calm': 'শান্ত (ভান)',
   'hero.mood.angry': 'ক্ষ্যাপা',
   'hero.mood.chaos': 'পুরো কেয়স',
+  'hero.vehicle': 'আপনার গাড়ি',
+  'hero.vehicle.name': 'তুশারের অটো',
+  'hero.vehicle.alt': 'সবুজ ইলেকট্রিক অটোরিকশা, ছাদে সাইনবোর্ডে লেখা তুশারের অটো',
 
   'stage.loading': 'গেম লোড হচ্ছে…',
   'stage.error': 'থ্রিডি গেম চালু করা গেল না। আপনার ব্রাউজার WebGL সমর্থন করে কিনা দেখুন।',
@@ -208,6 +211,9 @@ const en: Record<Key, string> = {
   'hero.mood.calm': 'Calm (pretend)',
   'hero.mood.angry': 'Furious',
   'hero.mood.chaos': 'Full chaos',
+  'hero.vehicle': 'Your vehicle',
+  'hero.vehicle.name': 'Tushar’s Auto',
+  'hero.vehicle.alt': 'Green electric auto-rickshaw with a roof sign reading Tushar’s Auto',
 
   'stage.loading': 'Loading the game…',
   'stage.error': 'Could not start the 3D game. Please check that your browser supports WebGL.',

@@ -78,6 +78,20 @@ export default function Hero() {
             </a>
           </div>
           <TrafficPanel />
+          <figure className="flex items-center gap-4 rounded-2xl border border-line bg-panel/80 p-3">
+            <img
+              src={`${import.meta.env.BASE_URL}tushar-auto.jpg`}
+              alt={t('hero.vehicle.alt')}
+              width={960}
+              height={524}
+              loading="lazy"
+              className="h-24 w-auto rounded-xl bg-slate-200 object-cover sm:h-28"
+            />
+            <figcaption>
+              <span className="text-xs text-slate-400">{t('hero.vehicle')}</span>
+              <span className="block font-display text-xl font-bold text-leaf">{t('hero.vehicle.name')}</span>
+            </figcaption>
+          </figure>
         </div>
         <GameStage startSignal={signal} />
       </div>

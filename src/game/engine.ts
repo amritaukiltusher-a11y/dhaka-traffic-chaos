@@ -114,12 +114,18 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const SHOP_NAMES = ['আলো চা স্টল', 'জুগাড় ইলেকট্রনিক্স', 'ঝাল-মজা ফুচকা', 'মামার দোকান', 'চলো কাবাব ঘর', 'রঙিন কাপড় ঘর', 'মোবাইল ক্লিনিক', 'নতুন বাজার স্টোর', 'ভাই-ভাই মিষ্টান্ন'];
 const SIGN_TEXTS = ['ধীরে চলুন', 'জ্যাম এলাকা', 'হর্ন বাজান (ফ্রি)', 'গর্ত সামনে', 'জুগাড় জোন'];
 
+const BN_FONT = '"Hind Siliguri","Noto Sans Bengali","Noto Sans",system-ui,sans-serif';
+/** Name painted on the player's auto (roof sign, canopy and plate). Change it here to rename the vehicle. */
+const VEHICLE_NAME = 'তুশারের অটো';
+const VEHICLE_PLATE = 'DHAKA METRO  TA-1234';
+
 /* ------------------------------------------------------------ the factory */
 
 /** Builds all procedural geometry. Geometries and materials are cached and shared. */
 class Factory {
   private geos = new Map<string, THREE.BufferGeometry>();
   private mats = new Map<string, THREE.Material>();
+  private textures: THREE.Texture[] = [];
 
   g(w: number, h: number, d: number) {
     const k = `b${w}|${h}|${d}`;
@@ -163,6 +169,31 @@ class Factory {
     if (!m) this.mats.set(k, (m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false })));
     return m;
   }
+  /** Canvas-drawn label material (cached by key). Repaints once the Bengali web font has loaded. */
+  label(key: string, w: number, h: number, draw: (c: CanvasRenderingContext2D, w: number, h: number) => void, sample = VEHICLE_NAME) {
+    const cached = this.mats.get(key);
+    if (cached) return cached as THREE.MeshBasicMaterial;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const paint = () => {
+      ctx.clearRect(0, 0, w, h);
+      draw(ctx, w, h);
+      tex.needsUpdate = true;
+    };
+    paint();
+    try {
+      void document.fonts?.load(`700 48px ${BN_FONT}`, sample).then(paint).catch(() => {});
+    } catch {
+      /* font loading API unavailable: the fallback font stays */
+    }
+    this.textures.push(tex);
+    return this.keep(key, new THREE.MeshBasicMaterial({ map: tex }));
+  }
   keep<T extends THREE.Material>(key: string, m: T): T {
     this.mats.set(key, m);
     return m;
@@ -170,6 +201,8 @@ class Factory {
   dispose() {
     this.geos.forEach((g) => g.dispose());
     this.mats.forEach((m) => m.dispose());
+    this.textures.forEach((t) => t.dispose());
+    this.textures = [];
     this.geos.clear();
     this.mats.clear();
   }
@@ -194,16 +227,79 @@ class Factory {
     this.add(grp, this.g(0.22, 0.12, 0.05), this.basic(0xff2b2b), halfW, y, z);
   }
 
-  /** player's electric auto-rickshaw (front points to -z) */
+  /** Drawn sign faces for the player's auto: roof sign, canopy flap and number plate. */
+  private vehicleLabels() {
+    const leaf = (c: CanvasRenderingContext2D, x: number, y: number, s: number) => {
+      c.fillStyle = '#e8c36a';
+      for (const [dx, dy, rot] of [[0, 0, -0.5], [s * 0.55, s * 0.1, 0.5]] as const) {
+        c.save();
+        c.translate(x + dx, y + dy);
+        c.rotate(rot);
+        c.beginPath();
+        c.ellipse(0, 0, s * 0.28, s * 0.62, 0, 0, Math.PI * 2);
+        c.fill();
+        c.restore();
+      }
+    };
+    const signFace = (w: number, h: number, key: string, withText: boolean) =>
+      this.label(key, w, h, (c) => {
+        c.fillStyle = '#2f7d3a';
+        c.fillRect(0, 0, w, h);
+        c.strokeStyle = '#1b4a24';
+        c.lineWidth = h * 0.09;
+        c.strokeRect(0, 0, w, h);
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillStyle = '#ffffff';
+        if (withText) {
+          c.font = `700 ${h * 0.56}px ${BN_FONT}`;
+          c.fillText(VEHICLE_NAME, w * 0.57, h * 0.54, w * 0.58);
+          leaf(c, w * 0.1, h * 0.5, h * 0.55);
+          c.strokeStyle = '#d9772f';
+          c.lineWidth = h * 0.07;
+          c.beginPath();
+          c.arc(w * 0.92, h * 0.5, h * 0.2, 0, Math.PI * 2);
+          c.stroke();
+        } else {
+          leaf(c, w * 0.42, h * 0.5, h * 0.6);
+        }
+      });
+    const canopy = this.label('v-canopy', 256, 192, (c, w, h) => {
+      c.fillStyle = '#5f6a4d';
+      c.fillRect(0, 0, w, h);
+      c.fillStyle = '#ffffff';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.font = `700 ${h * 0.3}px ${BN_FONT}`;
+      c.fillText('তুশারের', w / 2, h * 0.34, w * 0.86);
+      c.fillText('অটো', w / 2, h * 0.7, w * 0.86);
+    });
+    const plate = this.label('v-plate', 256, 72, (c, w, h) => {
+      c.fillStyle = '#f4f4ef';
+      c.fillRect(0, 0, w, h);
+      c.strokeStyle = '#222';
+      c.lineWidth = 4;
+      c.strokeRect(2, 2, w - 4, h - 4);
+      c.fillStyle = '#111';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.font = `700 ${h * 0.42}px Arial, sans-serif`;
+      c.fillText(VEHICLE_PLATE, w / 2, h / 2, w - 16);
+    }, VEHICLE_PLATE);
+    return { side: signFace(600, 152, 'v-sign-side', true), rear: signFace(520, 152, 'v-sign-rear', true), front: signFace(520, 152, 'v-sign-front', false), canopy, plate };
+  }
+
+  /** player's electric auto-rickshaw, styled after the owner's green auto (front points to -z) */
   rickshaw() {
     const grp = new THREE.Group();
     const wheels: THREE.Object3D[] = [];
-    const body = this.lam(0x1fa35a);
-    const yellow = this.lam(0xf4c20d);
+    const body = this.lam(0x237d33);
+    const olive = this.lam(0x5f6a4d);
     const dark = this.lam(0x1a1c22);
+    const L = this.vehicleLabels();
     this.add(grp, this.g(1.3, 0.45, 2.3), body, 0, 0.62, 0.1);
     this.add(grp, this.g(1.0, 0.8, 0.9), body, 0, 0.98, -0.95);
-    this.add(grp, this.g(1.3, 0.1, 1.75), yellow, 0, 1.98, 0.35);
+    this.add(grp, this.g(1.3, 0.1, 1.75), olive, 0, 1.98, 0.35);
     for (const x of [-0.58, 0.58]) {
       this.add(grp, this.g(0.07, 1.05, 0.07), dark, x, 1.45, -0.42);
       this.add(grp, this.g(0.07, 1.05, 0.07), dark, x, 1.45, 1.1);
@@ -211,9 +307,17 @@ class Factory {
     this.add(grp, this.g(1.1, 0.28, 0.6), dark, 0, 0.95, 0.75);
     this.add(grp, this.g(1.1, 0.6, 0.12), dark, 0, 1.3, 1.08);
     this.add(grp, this.g(1.0, 0.6, 0.05), this.glass(0x9fd8ff, 0.35), 0, 1.6, -0.45);
+    // roof sign: faces are +x, -x, +y, -y, +z (rear, seen by the chase camera), -z (front)
+    const sign = new THREE.Mesh(this.g(1.3, 0.38, 1.5), [L.side, L.side, this.lam(0x1f5f2a), this.lam(0x1f5f2a), L.rear, L.front]);
+    sign.position.set(0, 2.24, 0.35);
+    grp.add(sign);
+    // canopy flap with the name, at the back
+    this.add(grp, this.plane(1.26, 0.9), L.canopy, 0, 1.5, 1.27);
+    // number plate under the flap
+    this.add(grp, this.plane(0.5, 0.14), L.plate, 0, 0.7, 1.27);
     this.add(grp, this.sph(0.13), this.basic(0xfff2b0), 0, 0.95, -1.42);
     this.tailLights(grp, 0.5, 0.78, 1.27);
-    for (const x of [-0.66, 0.66]) this.add(grp, this.g(0.04, 0.22, 0.55), this.basic(0xffd400), x, 0.65, 0.1);
+    for (const x of [-0.66, 0.66]) this.add(grp, this.g(0.04, 0.22, 0.55), this.basic(0xff9a1a), x, 0.65, 0.1);
     const f = this.wheel(0.3, 0.18);
     f.position.set(0, 0.3, -0.95);
     grp.add(f);

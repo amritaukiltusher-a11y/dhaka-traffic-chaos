@@ -38,3 +38,8 @@ Social links in `src/config.ts` and `CONTACT_EMAIL` are placeholders to replace.
 2. Repo Settings > Pages > Source: **GitHub Actions**.
 3. The workflow in `.github/workflows/deploy.yml` builds with `BASE_PATH=/<repo-name>/` and publishes.
 Site URL: `https://<username>.github.io/<repo-name>/`
+
+## Player vehicle
+The player's auto is styled after a green auto-rickshaw (see `public/tushar-auto.jpg`, shown in the hero section).
+Its name, number plate and sign are drawn on canvas textures: change `VEHICLE_NAME` / `VEHICLE_PLATE` at the top of
+`src/game/engine.ts` (and the canopy text in `vehicleLabels()`), and replace `public/tushar-auto.jpg` for the photo card.
