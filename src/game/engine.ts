@@ -334,22 +334,22 @@ class Factory {
   }
 
   chaserBus() {
+    // Low, 9 m long bus. It sits BEHIND the player and below the camera's line of sight to the
+    // rickshaw, so it never hides the player. The camera only sees its roof front (local -z end),
+    // so the angry eyes and the sirens live on the roof, near that end.
     const grp = new THREE.Group();
-    this.add(grp, this.g(2.8, 3.2, 9), this.lam(0xb3121c), 0, 2, 0);
-    this.add(grp, this.g(2.84, 0.5, 9.02), this.lam(0x1a1c22), 0, 1.0, 0);
-    // angry face on the back (+z side), because that is the side the camera sees
+    this.add(grp, this.g(2.8, 2.0, 9), this.lam(0xb3121c), 0, 1.4, 0);
+    this.add(grp, this.g(2.84, 0.4, 9.02), this.lam(0x1a1c22), 0, 0.8, 0);
     for (const x of [-0.8, 0.8]) {
-      this.add(grp, this.sph(0.42), this.basic(0xffffff), x, 2.7, 4.5);
-      this.add(grp, this.sph(0.2), this.basic(0xff1111), x, 2.7, 4.85);
-      const brow = this.add(grp, this.g(0.95, 0.14, 0.1), this.basic(0x110000), x, 3.25, 4.6);
+      this.add(grp, this.sph(0.42), this.basic(0xffffff), x, 2.55, -3.3);
+      this.add(grp, this.sph(0.2), this.basic(0xff1111), x, 2.75, -3.0);
+      const brow = this.add(grp, this.g(0.95, 0.14, 0.1), this.basic(0x110000), x, 3.05, -3.3);
       brow.rotation.z = x < 0 ? -0.45 : 0.45;
     }
-    for (let i = -3; i <= 3; i++) this.add(grp, this.g(0.26, 0.3, 0.12), this.basic(0xffffff), i * 0.32, 1.6, 4.52);
-    this.add(grp, this.g(2.4, 0.18, 0.1), this.basic(0x220000), 0, 1.78, 4.51);
     const l1 = new THREE.Mesh(this.g(0.7, 0.25, 0.5), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
     const l2 = new THREE.Mesh(this.g(0.7, 0.25, 0.5), new THREE.MeshBasicMaterial({ color: 0x2060ff }));
-    l1.position.set(-0.8, 3.75, 0);
-    l2.position.set(0.8, 3.75, 0);
+    l1.position.set(-1.0, 2.55, -4.2);
+    l2.position.set(1.0, 2.55, -4.2);
     grp.add(l1, l2);
     this.keep('chaser-l1', l1.material as THREE.Material);
     this.keep('chaser-l2', l2.material as THREE.Material);
@@ -1397,7 +1397,8 @@ export class DriveGame {
     this.chaser.grp.visible = showChaser;
     if (showChaser) {
       this.chaserX += (this.px - this.chaserX) * Math.min(1, 2 * dt);
-      this.chaser.grp.position.set(this.chaserX, 0, 3.2 + this.gap * 0.17);
+      // bus front edge stays >= 4.6 behind the player's centre, so it never overlaps the rickshaw
+      this.chaser.grp.position.set(this.chaserX, 0, 9.1 + this.gap * 0.12);
       const flip = Math.floor(t * 6) % 2 === 0;
       (this.chaser.l1.material as THREE.MeshBasicMaterial).color.setHex(flip ? 0xff2020 : 0x300000);
       (this.chaser.l2.material as THREE.MeshBasicMaterial).color.setHex(flip ? 0x001040 : 0x2060ff);
