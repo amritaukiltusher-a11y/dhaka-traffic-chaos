@@ -55,12 +55,32 @@ function Pad({ action, input, label, glyph, className }: PadProps) {
   );
 }
 
-export default function TouchControls({ input }: { input: InputManager }) {
+function BombLabel() {
+  const { t } = useLang();
+  return <span>{t('stage.bomb')}</span>;
+}
+
+export default function TouchControls({ input, onBomb }: { input: InputManager; onBomb: () => void }) {
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-      <div className="pointer-events-auto flex gap-2">
+      <div className="pointer-events-auto flex flex-col items-start gap-2">
+        <button
+          type="button"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            onBomb();
+          }}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{ touchAction: 'none', WebkitTouchCallout: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
+          className="flex h-12 items-center gap-1.5 rounded-2xl border-2 border-white/40 bg-brick/85 px-4 font-display text-base font-bold text-white shadow-lg active:scale-95"
+        >
+          <span aria-hidden="true">💣</span>
+          <BombLabel />
+        </button>
+        <div className="flex gap-2">
         <Pad action="left" input={input} label="ctl.left" glyph="◀" className="h-[4.5rem] w-[4.5rem]" />
         <Pad action="right" input={input} label="ctl.right" glyph="▶" className="h-[4.5rem] w-[4.5rem]" />
+        </div>
       </div>
       <div className="pointer-events-auto flex flex-col items-end gap-3">
         <div className="flex gap-2">

@@ -43,3 +43,10 @@ Site URL: `https://<username>.github.io/<repo-name>/`
 The player's auto is styled after a green auto-rickshaw (see `public/tushar-auto.jpg`, shown in the hero section).
 Its name, number plate and sign are drawn on canvas textures: change `VEHICLE_NAME` / `VEHICLE_PLATE` at the top of
 `src/game/engine.ts` (and the canopy text in `vehicleLabels()`), and replace `public/tushar-auto.jpg` for the photo card.
+
+## Sound Bomb (শব্দ বোমা)
+A "Sound Bomb" button (key **B**, also a big pad on touch screens) plays a cartoon effect plus a random funny Bengali
+shout, and the same happens automatically on every crash. Lines live in `SOUND_BOMB` in `src/game/content.ts`;
+effects are synthesised in `src/game/audio.ts` (no audio files). The spoken voice uses the browser's built-in
+text-to-speech and is only heard on devices that have a Bengali (`bn`) voice installed (common on Android/Chrome and
+recent Windows/macOS); otherwise you still get the cartoon sound and the text bubble. The sound toggle (M) mutes it all.

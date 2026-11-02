@@ -8,11 +8,12 @@ const KEYS: { keys: string[]; label: Key }[] = [
   { keys: ['Shift'], label: 'ctl.boost' },
   { keys: ['Space'], label: 'ctl.special' },
   { keys: ['H'], label: 'ctl.horn' },
+  { keys: ['B'], label: 'ctl.bomb' },
   { keys: ['M'], label: 'ctl.mute' },
   { keys: ['Esc'], label: 'ctl.pause' }
 ];
 
-const RULES: Key[] = ['ctl.rule1', 'ctl.rule2', 'ctl.rule3', 'ctl.rule4', 'ctl.rule5', 'ctl.rule6'];
+const RULES: Key[] = ['ctl.rule1', 'ctl.rule2', 'ctl.rule3', 'ctl.rule4', 'ctl.rule5', 'ctl.rule6', 'ctl.rule7'];
 
 export default function HowToPlay() {
   const { t } = useLang();
@@ -47,7 +48,7 @@ export default function HowToPlay() {
             <h3 className="font-display text-xl text-sun">{t('ctl.touchTitle')}</h3>
             <p className="mt-3 text-slate-200">{t('ctl.touchDesc')}</p>
             <div className="mt-5 grid grid-cols-4 gap-2 text-center text-xs text-slate-200" aria-hidden="true">
-              {['◀', '▶', '▲', '▼', '⚡', '📢', '🛡'].map((g) => (
+              {['◀', '▶', '▲', '▼', '⚡', '📢', '🛡', '💣'].map((g) => (
                 <span key={g} className="rounded-xl border border-white/30 bg-black/50 py-3 text-2xl">
                   {g}
                 </span>

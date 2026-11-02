@@ -13,11 +13,13 @@ export type Action = keyof InputState;
 export interface InputHandlers {
   onPause: () => void;
   onMute: () => void;
+  /** the "sound bomb" key */
+  onBomb: () => void;
   /** called when the window loses focus / tab is hidden */
   onBlur: () => void;
 }
 
-const KEY_MAP: Record<string, Action | 'pause' | 'mute'> = {
+const KEY_MAP: Record<string, Action | 'pause' | 'mute' | 'bomb'> = {
   KeyW: 'accel',
   ArrowUp: 'accel',
   KeyS: 'brake',
@@ -31,6 +33,7 @@ const KEY_MAP: Record<string, Action | 'pause' | 'mute'> = {
   Space: 'special',
   KeyH: 'horn',
   KeyM: 'mute',
+  KeyB: 'bomb',
   Escape: 'pause'
 };
 
@@ -97,6 +100,10 @@ export class InputManager {
       if (!e.repeat) this.handlers.onMute();
       return;
     }
+    if (mapped === 'bomb') {
+      if (!e.repeat) this.handlers.onBomb();
+      return;
+    }
     if (this.captureKeys) e.preventDefault();
     this.keys[mapped].add(e.code);
     this.recompute();
@@ -104,7 +111,7 @@ export class InputManager {
 
   private onKeyUp = (e: KeyboardEvent) => {
     const mapped = KEY_MAP[e.code];
-    if (!mapped || mapped === 'pause' || mapped === 'mute') return;
+    if (!mapped || mapped === 'pause' || mapped === 'mute' || mapped === 'bomb') return;
     this.keys[mapped].delete(e.code);
     this.recompute();
   };

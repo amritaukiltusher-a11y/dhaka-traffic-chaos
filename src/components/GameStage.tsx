@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { DriveGame, type GameResult, type HudState } from '../game/engine';
 import { InputManager } from '../game/input';
 import { SoundEngine } from '../game/audio';
-import { eventMessage, resultHeadline, type Headline } from '../game/content';
+import { eventMessage, randomBomb, resultHeadline, type Headline } from '../game/content';
 import { addToTotals, patchPrefs, prefsStore, sanitizeNickname, submitScore, totalsStore } from '../lib/storage';
 import { useStore } from '../lib/store';
 import { fmtDistance, fmtMoney, fmtNum, fmtTime } from '../lib/format';
@@ -28,6 +28,7 @@ const KEY_LEGEND: { keys: string; label: Key }[] = [
   { keys: 'A D / ← →', label: 'ctl.left' },
   { keys: 'Shift', label: 'ctl.boost' },
   { keys: 'Space', label: 'ctl.special' },
+  { keys: 'B', label: 'ctl.bomb' },
   { keys: 'H', label: 'ctl.horn' },
   { keys: 'M', label: 'ctl.mute' },
   { keys: 'Esc', label: 'ctl.pause' }
@@ -57,7 +58,7 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<DriveGame | null>(null);
   const audio = useMemo(() => new SoundEngine(), []);
-  const input = useMemo(() => new InputManager({ onPause: () => {}, onMute: () => {}, onBlur: () => {} }), []);
+  const input = useMemo(() => new InputManager({ onPause: () => {}, onMute: () => {}, onBomb: () => {}, onBlur: () => {} }), []);
 
   const [phase, setPhaseState] = useState<Phase>('loading');
   const phaseRef = useRef<Phase>('loading');
@@ -93,6 +94,26 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
     setToast({ id: ++toastId.current, text, tone });
     toastTimer.current = window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  /** "Sound bomb": cartoon effect + funny Bengali shout + a text bubble. Also fired on every crash. */
+  const lastBomb = useRef({ t: 0, idx: -1 });
+  const soundBomb = useCallback(
+    (auto: boolean): boolean => {
+      const now = performance.now();
+      if (now - lastBomb.current.t < (auto ? 1500 : 350)) return false;
+      lastBomb.current.t = now;
+      audio.unlock();
+      const { idx, line } = randomBomb(lastBomb.current.idx);
+      lastBomb.current.idx = idx;
+      audio.bomb(line.bn, line.sfx);
+      const text = langRef.current === 'bn' ? line.bn : `${line.bn} (${line.en})`;
+      showToast(`${auto ? '💥' : '🔊'} ${text}`, auto ? 'bad' : 'info');
+      return true;
+    },
+    [audio, showToast]
+  );
+  const soundBombRef = useRef(soundBomb);
+  soundBombRef.current = soundBomb;
 
   const togglePause = useCallback(() => {
     const e = engineRef.current;
@@ -160,6 +181,7 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
           {
             onHud: (h) => setHud(h),
             onEvent: (ev) => {
+              if ((ev.type === 'crash' || ev.type === 'pedestrian') && soundBombRef.current(true)) return;
               const tone: Toast['tone'] = BAD.has(ev.type) ? 'bad' : GOOD.has(ev.type) ? 'good' : 'info';
               let text = eventMessage(ev.type, langRef.current, ev.value);
               if (ev.type === 'nearMiss' && ev.value) text += `  +${ev.value}`;
@@ -210,6 +232,9 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
     input.setHandlers({
       onPause: togglePause,
       onMute: toggleSound,
+      onBomb: () => {
+        if (phaseRef.current === 'playing') soundBombRef.current(false);
+      },
       onBlur: () => {
         if (phaseRef.current === 'playing') togglePause();
       }
@@ -307,6 +332,18 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
       {/* toolbar */}
       {showToolbar && (
         <div className="absolute right-2 top-2 z-10 flex gap-1.5 sm:right-3 sm:top-3">
+          {(phase === 'menu' || (phase === 'playing' && !isTouch)) && (
+            <button
+              type="button"
+              onClick={() => soundBomb(false)}
+              aria-label={t('stage.bomb')}
+              title={`${t('stage.bomb')} (B)`}
+              className="flex h-10 items-center gap-1.5 rounded-lg bg-brick px-3 text-sm font-bold text-white ring-1 ring-white/30 hover:brightness-110"
+            >
+              <span aria-hidden="true">💣</span>
+              <span>{t('stage.bomb')}</span>
+            </button>
+          )}
           {playing && (
             <IconButton label={phase === 'paused' ? t('stage.resume') : t('stage.pause')} onClick={togglePause}>
               {phase === 'paused' ? '▶' : '⏸'}
@@ -331,8 +368,8 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
       {playing && hud && <Hud hud={hud} />}
 
       {/* event toast */}
-      <div aria-live="polite" className="pointer-events-none absolute inset-x-0 top-14 z-10 flex justify-center px-3 sm:top-3">
-        {toast && playing && (
+      <div aria-live="polite" className="pointer-events-none absolute inset-x-0 top-14 z-10 flex justify-center px-3 sm:justify-end">
+        {toast && (playing || phase === 'menu') && (
           <div
             key={toast.id}
             className={`max-w-[85%] rounded-xl px-4 py-2 text-center text-sm font-semibold shadow-lg sm:max-w-md sm:text-base motion-safe:animate-[pop_.25s_ease-out] ${
@@ -355,7 +392,7 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
         </div>
       )}
 
-      {playing && isTouch && <TouchControls input={input} />}
+      {playing && isTouch && <TouchControls input={input} onBomb={() => soundBomb(false)} />}
 
       {/* main menu */}
       {phase === 'menu' && (

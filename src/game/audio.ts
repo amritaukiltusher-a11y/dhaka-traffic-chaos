@@ -3,6 +3,8 @@
  * so there is nothing to license and nothing to download.
  * The AudioContext is created lazily on the first user gesture (browser autoplay rules).
  */
+export type Sfx = 'boing' | 'whistle' | 'quack' | 'bonk' | 'wah' | 'squeak';
+
 export class SoundEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -14,7 +16,10 @@ export class SoundEngine {
   setEnabled(on: boolean) {
     this.enabled = on;
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(on ? 0.5 : 0, this.ctx.currentTime, 0.03);
-    if (!on) this.setEngine(0, false, false);
+    if (!on) {
+      this.setEngine(0, false, false);
+      this.stopSpeech();
+    }
   }
 
   isEnabled() {
@@ -156,11 +161,88 @@ export class SoundEngine {
     this.tone(220, 0.5, 'triangle', 0.1, 90, 0.25);
   }
 
+  /** Cartoon sound effects, all synthesised (nothing to download or license). */
+  comic(kind: Sfx) {
+    switch (kind) {
+      case 'boing':
+        this.tone(180, 0.35, 'triangle', 0.16, 560);
+        this.tone(560, 0.3, 'triangle', 0.12, 240, 0.32);
+        break;
+      case 'whistle':
+        this.tone(1500, 0.7, 'sine', 0.08, 280);
+        break;
+      case 'quack':
+        this.tone(520, 0.12, 'sawtooth', 0.09, 340);
+        this.tone(440, 0.14, 'sawtooth', 0.09, 300, 0.16);
+        break;
+      case 'bonk':
+        this.tone(240, 0.16, 'square', 0.12, 70);
+        this.tone(900, 0.06, 'triangle', 0.08, 400, 0.02);
+        break;
+      case 'wah':
+        this.tone(392, 0.26, 'sawtooth', 0.07, 370);
+        this.tone(370, 0.26, 'sawtooth', 0.07, 349, 0.3);
+        this.tone(349, 0.26, 'sawtooth', 0.07, 330, 0.6);
+        this.tone(311, 0.7, 'sawtooth', 0.07, 130, 0.9);
+        break;
+      case 'squeak':
+        this.tone(1800, 0.08, 'sine', 0.08, 2500);
+        this.tone(2200, 0.08, 'sine', 0.08, 3000, 0.1);
+        break;
+    }
+  }
+
+  private bnVoice(): SpeechSynthesisVoice | null {
+    try {
+      return window.speechSynthesis?.getVoices().find((v) => /^bn\b/i.test(v.lang)) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** True when this device has a Bengali text-to-speech voice (otherwise only the sound effect + text are used). */
+  hasBengaliVoice() {
+    return this.bnVoice() !== null;
+  }
+
+  speak(text: string) {
+    if (!this.enabled) return;
+    try {
+      const synth = window.speechSynthesis;
+      const voice = this.bnVoice();
+      if (!synth || !voice) return;
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.voice = voice;
+      u.lang = voice.lang;
+      u.pitch = 1.5;
+      u.rate = 1.05;
+      synth.speak(u);
+    } catch {
+      /* speech is a bonus; ignore any failure */
+    }
+  }
+
+  private stopSpeech() {
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** The "sound bomb": a cartoon effect followed by a funny Bengali shout. */
+  bomb(text: string, sfx: Sfx) {
+    this.comic(sfx);
+    window.setTimeout(() => this.speak(text), 220);
+  }
+
   click() {
     this.tone(700, 0.05, 'sine', 0.04);
   }
 
   dispose() {
+    this.stopSpeech();
     this.stopEngine();
     void this.ctx?.close();
     this.ctx = null;

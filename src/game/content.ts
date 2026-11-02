@@ -1,5 +1,6 @@
 import type { EventType, GameResult } from './engine';
 import type { Lang } from '../lib/storage';
+import type { Sfx } from './audio';
 
 /** All humour below is original, fictional game content. */
 
@@ -175,3 +176,36 @@ export const NEWS_CATEGORIES = {
   bn: ['জ্যাম', 'গর্ত', 'হর্ন', 'চা-বিরতি', 'সিগন্যাল', 'লেন-যুদ্ধ'],
   en: ['Jam', 'Pothole', 'Honk', 'Tea break', 'Signal', 'Lane war']
 };
+
+/* ------------------------------------------------------------ sound bomb */
+
+export interface BombLine {
+  bn: string;
+  en: string;
+  sfx: Sfx;
+}
+
+/** Funny shouts played by the "শব্দ বোমা" button and on every crash. Original fictional lines. */
+export const SOUND_BOMB: BombLine[] = [
+  { bn: 'ও ভাই, দেখে চালান!', en: 'Hey brother, watch the road!', sfx: 'bonk' },
+  { bn: 'আমার অটোর কী হলো রে!', en: 'What happened to my auto!', sfx: 'wah' },
+  { bn: 'মামা, রাস্তা কি আপনার একার?', en: 'Uncle, is the road only yours?', sfx: 'quack' },
+  { bn: 'হর্ন দিলাম তো! শুনলেন না?', en: 'I honked! Did you not hear?', sfx: 'squeak' },
+  { bn: 'আরে আরে আরে! থামুন থামুন!', en: 'Whoa whoa whoa! Stop stop!', sfx: 'whistle' },
+  { bn: 'জ্যামে আটকে গেলাম রে ভাই!', en: 'Stuck in the jam, brother!', sfx: 'wah' },
+  { bn: 'ধাক্কাটা কিন্তু ফ্রি ছিল!', en: 'That bump was free of charge!', sfx: 'boing' },
+  { bn: 'চলুন, আগে এক কাপ চা খাই!', en: 'Come on, tea first!', sfx: 'quack' },
+  { bn: 'এ কী কাণ্ড! এ কী কাণ্ড!', en: 'What a scene! What a scene!', sfx: 'boing' },
+  { bn: 'বাঁচাও! ক্ষ্যাপা বাস আসছে!', en: 'Help! The Angry Bus is coming!', sfx: 'whistle' },
+  { bn: 'দাদা, ইনস্যুরেন্স আছে তো?', en: 'Brother, you do have insurance, right?', sfx: 'bonk' },
+  { bn: 'ঢিশুম! আজ ফুল ড্রামা!', en: 'Boom! Full drama today!', sfx: 'bonk' },
+  { bn: 'লাইন মানুন, লাইন মানুন!', en: 'Follow the lane, follow the lane!', sfx: 'squeak' },
+  { bn: 'আমি তো শুধু হর্ন বাজাচ্ছিলাম!', en: 'I was only honking!', sfx: 'quack' },
+  { bn: 'ব্রেক কোথায় রে, ব্রেক কোথায়!', en: 'Where is the brake, where is the brake!', sfx: 'whistle' }
+];
+
+export function randomBomb(prevIdx: number): { idx: number; line: BombLine } {
+  let idx = Math.floor(Math.random() * SOUND_BOMB.length);
+  if (idx === prevIdx) idx = (idx + 1) % SOUND_BOMB.length;
+  return { idx, line: SOUND_BOMB[idx] };
+}
