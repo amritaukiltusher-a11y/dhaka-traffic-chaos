@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import type { InputState } from './input';
 import type { SoundEngine } from './audio';
-import type { Quality } from '../lib/storage';
+import type { Difficulty, Quality } from '../lib/storage';
 
 /* ------------------------------------------------------------------ types */
+
+export type Weather = 'night' | 'dusk' | 'rain';
 
 export type EventType =
   | 'crash'
@@ -16,11 +18,14 @@ export type EventType =
   | 'levelUp'
   | 'lowBattery'
   | 'pursuit'
-  | 'shield';
+  | 'shield'
+  | 'chai'
+  | 'weather';
 
 export interface GameEvent {
   type: EventType;
   value?: number;
+  extra?: number;
 }
 
 export interface HudState {
@@ -37,6 +42,9 @@ export interface HudState {
   shieldCd: number; // seconds until shield is ready
   boosting: boolean;
   invuln: boolean;
+  combo: number; // current near-miss chain (0 = none)
+  chai: number; // seconds of free-boost left
+  weather: Weather;
 }
 
 export interface GameResult {
@@ -48,6 +56,11 @@ export interface GameResult {
   damage: number;
   level: number;
   reason: 'battery' | 'caught';
+  nearMisses: number;
+  chais: number;
+  bestCombo: number;
+  weather: Weather;
+  difficulty: Difficulty;
 }
 
 export interface EngineCallbacks {
@@ -73,7 +86,7 @@ const PL = 1.3; // player half-length
 const MAX_X = 5.3;
 const GAP_MAX = 30;
 
-type Kind = 'car' | 'bus' | 'truck' | 'cng' | 'bike' | 'rickshaw' | 'barrier' | 'pothole' | 'stall' | 'pedestrian' | 'pickup';
+type Kind = 'car' | 'bus' | 'truck' | 'cng' | 'bike' | 'rickshaw' | 'barrier' | 'pothole' | 'stall' | 'pedestrian' | 'pickup' | 'chai';
 
 interface Entity {
   kind: Kind;
@@ -100,6 +113,22 @@ const BATTERY_BASE_DRAIN = 0.42;
 const BATTERY_SPEED_DRAIN = 0.016;
 const BATTERY_BOOST_DRAIN = 3;
 const PICKUP_GAIN = 35;
+const CHAI_SECONDS = 7;
+
+/** difficulty multipliers: battery drain, traffic density, chaser speed, final score */
+const DIFFICULTY: Record<Difficulty, { drain: number; traffic: number; chaser: number; score: number }> = {
+  easy: { drain: 0.8, traffic: 0.85, chaser: 0.92, score: 0.85 },
+  normal: { drain: 1, traffic: 1, chaser: 1, score: 1 },
+  hard: { drain: 1.2, traffic: 1.2, chaser: 1.1, score: 1.3 }
+};
+
+/** sky / light / road look per weather */
+const WEATHER_LOOK: Record<Weather, { bg: number; near: number; far: number; sky: number; ground: number; hemi: number; sun: number; sunI: number; road: number }> = {
+  night: { bg: 0x0d1226, near: 45, far: 200, sky: 0x8fa4ff, ground: 0x20202a, hemi: 1.25, sun: 0xffd9a0, sunI: 0.9, road: 0xffffff },
+  dusk: { bg: 0xe0805a, near: 70, far: 260, sky: 0xffb98a, ground: 0x3a2a3a, hemi: 1.7, sun: 0xff9a55, sunI: 1.4, road: 0xffffff },
+  rain: { bg: 0x1b2533, near: 28, far: 135, sky: 0x7f93b5, ground: 0x151a22, hemi: 1.0, sun: 0x9fb0cc, sunI: 0.35, road: 0x8d97a8 }
+};
+const RAIN_DROPS = 260;
 const CRASH_DAMAGE: Partial<Record<Kind, number>> = {
   bus: 450_000,
   truck: 520_000,
@@ -443,6 +472,24 @@ class Factory {
     return { grp, core, hw: 0.8, hl: 0.8 };
   }
 
+  /** tea-cup power-up: a free, battery-less boost for a few seconds */
+  chai() {
+    const grp = new THREE.Group();
+    const core = new THREE.Group();
+    const china = this.lam(0xf6efe2);
+    this.add(core, this.cyl(0.34, 0.26, 0.4, 14), china, 0, 0, 0);
+    this.add(core, this.cyl(0.3, 0.3, 0.03, 14), this.basic(0xb5651d), 0, 0.2, 0);
+    this.add(core, this.g(0.2, 0.05, 0.05), china, 0.4, 0.06, 0);
+    this.add(core, this.g(0.05, 0.22, 0.05), china, 0.47, 0, 0);
+    this.add(core, this.cyl(0.5, 0.5, 0.04, 16), china, 0, -0.24, 0);
+    for (const [x, z] of [[-0.09, 0], [0.09, 0.06]]) this.add(core, this.g(0.05, 0.36, 0.05), this.glass(0xffffff, 0.5), x, 0.55, z);
+    core.scale.setScalar(2.4);
+    core.position.y = 1.2;
+    grp.add(core);
+    this.add(grp, this.cyl(0.8, 0.8, 0.02, 20), this.glass(0xffa23a, 0.45), 0, 0.03, 0);
+    return { grp, core, hw: 0.8, hl: 0.8 };
+  }
+
   chaserBus() {
     // Low, 9 m long bus. It sits BEHIND the player and below the camera's line of sight to the
     // rickshaw, so it never hides the player. The camera only sees its roof front (local -z end),
@@ -533,6 +580,22 @@ export class DriveGame {
   private shake = 0;
   private spawnT = 0;
   private pickupT = 5;
+  private chaiT = 14;
+  private chai = 0;
+  private chaiCount = 0;
+  private combo = 0;
+  private comboT = 0;
+  private bestCombo = 0;
+  private nearMisses = 0;
+  private weather: Weather = 'night';
+  private difficulty: Difficulty = 'normal';
+  private hemi!: THREE.HemisphereLight;
+  private sunLight!: THREE.DirectionalLight;
+  private roadMat!: THREE.MeshLambertMaterial;
+  private moon!: THREE.Mesh;
+  private stars!: THREE.Points;
+  private rain!: THREE.LineSegments;
+  private rainPos = new Float32Array(RAIN_DROPS * 6);
   private lowWarned = false;
   private pursuitWarned = false;
   private lampPhase = 0;
@@ -556,10 +619,11 @@ export class DriveGame {
     this.scene.background = new THREE.Color(sky);
     this.scene.fog = new THREE.Fog(sky, 45, 200);
 
-    this.scene.add(new THREE.HemisphereLight(0x8fa4ff, 0x20202a, 1.25));
-    const sun = new THREE.DirectionalLight(0xffd9a0, 0.9);
-    sun.position.set(-20, 40, 30);
-    this.scene.add(sun);
+    this.hemi = new THREE.HemisphereLight(0x8fa4ff, 0x20202a, 1.25);
+    this.scene.add(this.hemi);
+    this.sunLight = new THREE.DirectionalLight(0xffd9a0, 0.9);
+    this.sunLight.position.set(-20, 40, 30);
+    this.scene.add(this.sunLight);
 
     this.headLight = new THREE.PointLight(0xfff0c0, 26, 26, 1.6);
     this.scene.add(this.headLight);
@@ -567,6 +631,7 @@ export class DriveGame {
     // road
     this.roadTex = this.makeRoadTexture();
     const roadMat = new THREE.MeshLambertMaterial({ map: this.roadTex });
+    this.roadMat = roadMat;
     const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, 520), roadMat);
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0, -200);
@@ -581,6 +646,7 @@ export class DriveGame {
     }
 
     this.addSky();
+    this.buildRain();
 
     // traffic light lamp materials (shared by every gantry)
     this.lampMats = {
@@ -626,16 +692,23 @@ export class DriveGame {
   }
 
   startDemo() {
+    this.audio.setRain(false);
     this.resetWorld(true);
     this.mode = 'demo';
     this.audio.setEngine(0, false, false);
+  }
+
+  setDifficulty(d: Difficulty) {
+    this.difficulty = d;
   }
 
   startRun() {
     this.resetWorld(false);
     this.mode = 'playing';
     this.audio.startEngine();
+    this.audio.setRain(this.weather === 'rain');
     this.emitHud();
+    if (this.weather !== 'night') this.emit('weather', this.weather === 'rain' ? 2 : 1);
   }
 
   pause() {
@@ -658,6 +731,7 @@ export class DriveGame {
     this.resizeObs?.disconnect();
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost as EventListener);
     this.audio.stopEngine();
+    this.audio.setRain(false);
     // shared geometries/materials are disposed by the factory; disposing twice is harmless in three.js
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -745,6 +819,7 @@ export class DriveGame {
     const moon = new THREE.Mesh(new THREE.SphereGeometry(7, 20, 14), new THREE.MeshBasicMaterial({ color: 0xfff3c9, fog: false }));
     moon.position.set(-60, 70, -300);
     this.scene.add(moon);
+    this.moon = moon;
     const N = 220;
     const pos = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
@@ -756,7 +831,60 @@ export class DriveGame {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false })));
+    this.stars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false }));
+    this.scene.add(this.stars);
+  }
+
+  /* ---------------------------------------------------------------- weather */
+
+  private buildRain() {
+    for (let i = 0; i < RAIN_DROPS; i++) this.resetDrop(i, true);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this.rainPos, 3));
+    this.rain = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xa9bde0, transparent: true, opacity: 0.5, fog: false }));
+    this.rain.frustumCulled = false;
+    this.rain.visible = false;
+    this.scene.add(this.rain);
+  }
+
+  private resetDrop(i: number, anywhere: boolean) {
+    const p = this.rainPos;
+    const x = rand(-16, 16);
+    const y = anywhere ? rand(0, 16) : rand(14, 18);
+    const z = anywhere ? rand(-70, 10) : rand(-70, -20);
+    p[i * 6] = x;
+    p[i * 6 + 1] = y;
+    p[i * 6 + 2] = z;
+    p[i * 6 + 3] = x;
+    p[i * 6 + 4] = y + 0.9;
+    p[i * 6 + 5] = z - 0.4;
+  }
+
+  private setWeather(w: Weather) {
+    this.weather = w;
+    const l = WEATHER_LOOK[w];
+    (this.scene.background as THREE.Color).setHex(l.bg);
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.setHex(l.bg);
+    fog.near = l.near;
+    fog.far = l.far;
+    this.hemi.color.setHex(l.sky);
+    this.hemi.groundColor.setHex(l.ground);
+    this.hemi.intensity = l.hemi;
+    this.sunLight.color.setHex(l.sun);
+    this.sunLight.intensity = l.sunI;
+    this.roadMat.color.setHex(l.road);
+    this.moon.visible = w === 'night';
+    this.stars.visible = w === 'night';
+    this.rain.visible = w === 'rain';
+  }
+
+  private pickWeather(): Weather {
+    // testing aid: open the page with ?weather=rain (or dusk / night) to force the weather
+    const forced = new URLSearchParams(window.location.search).get('weather');
+    if (forced === 'night' || forced === 'dusk' || forced === 'rain') return forced;
+    const r = Math.random();
+    return r < 0.5 ? 'night' : r < 0.75 ? 'dusk' : 'rain';
   }
 
   /* ---------------------------------------------------------- roadside city */
@@ -985,6 +1113,14 @@ export class DriveGame {
     this.shake = 0;
     this.spawnT = 0.4;
     this.pickupT = 5;
+    this.chaiT = new URLSearchParams(window.location.search).has('fastchai') ? 1.5 : 14; // ?fastchai: testing aid
+    this.chai = 0;
+    this.chaiCount = 0;
+    this.combo = 0;
+    this.comboT = 0;
+    this.bestCombo = 0;
+    this.nearMisses = 0;
+    this.setWeather(demo ? 'night' : this.pickWeather());
     this.lowWarned = false;
     this.pursuitWarned = false;
     this.camX = this.px;
@@ -994,6 +1130,16 @@ export class DriveGame {
     this.chaser.grp.visible = false;
     // pre-populate the road so it never starts empty
     for (let z = -25; z > -170; z -= rand(12, 22)) this.spawnTraffic(z);
+    if (!demo && new URLSearchParams(window.location.search).has('fastchai')) {
+      // testing aid: a chai cup right ahead in the player's lane
+      this.ents = this.ents.filter((e) => {
+        const clash = Math.abs(e.x - LANES[2]) < 2 && e.z < -20 && e.z > -70;
+        if (clash) this.scene.remove(e.obj);
+        return !clash;
+      });
+      const c = this.makeEntity('chai', 2, -45);
+      if (c) this.ents.push(c);
+    }
   }
 
   /* ------------------------------------------------------------- spawning */
@@ -1046,6 +1192,9 @@ export class DriveGame {
         break;
       case 'pickup':
         b = this.f.pickup();
+        break;
+      case 'chai':
+        b = this.f.chai();
         break;
     }
     const e: Entity = {
@@ -1139,6 +1288,17 @@ export class DriveGame {
     }
   }
 
+  private spawnChai() {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const lane = Math.floor(Math.random() * 4);
+      if (this.laneFree(lane, SPAWN_Z, 16)) {
+        const e = this.makeEntity('chai', lane, SPAWN_Z);
+        if (e) this.ents.push(e);
+        return;
+      }
+    }
+  }
+
   private removeEntity(i: number) {
     this.scene.remove(this.ents[i].obj);
     this.ents.splice(i, 1);
@@ -1170,7 +1330,7 @@ export class DriveGame {
     LANES.forEach((lx, i) => {
       let clear = 120;
       for (const e of this.ents) {
-        if (e.kind === 'pickup' || e.z > 3 || e.z < -75) continue;
+        if (e.kind === 'pickup' || e.kind === 'chai' || e.z > 3 || e.z < -75) continue;
         if (Math.abs(e.x - lx) < e.hw + PW + 0.6) clear = Math.min(clear, -e.z - e.hl);
       }
       const score = clear - Math.abs(lx - this.px) * 4 + (Math.abs(lx - this.px) < 0.5 ? 10 : 0);
@@ -1205,14 +1365,17 @@ export class DriveGame {
 
     /* ---- speed */
     const maxBase = 22 + this.level * 1.4;
-    this.boosting = inp.boost && (this.battery > 3 || demo);
+    this.chai = Math.max(0, this.chai - dt);
+    this.boosting = (inp.boost && (this.battery > 3 || demo)) || this.chai > 0;
     if (this.boosting && boostEdge) {
       this.emit('boost');
       this.audio.boost();
     }
     const max = maxBase * (this.boosting ? 1.45 : 1);
-    if (inp.accel) this.speed += (this.boosting ? 16 : 9) * dt;
-    else if (inp.brake) this.speed -= 24 * dt;
+    const throttle = inp.accel || (this.chai > 0 && !inp.brake);
+    const wet = this.weather === 'rain';
+    if (throttle) this.speed += (this.boosting ? 16 : 9) * dt;
+    else if (inp.brake) this.speed -= (wet ? 18 : 24) * dt;
     else this.speed -= 3.2 * dt;
     if (inp.brake && inp.accel) this.speed -= 9 * dt;
     if (this.speed > max) this.speed = Math.max(max, this.speed - 14 * dt);
@@ -1221,7 +1384,7 @@ export class DriveGame {
     /* ---- steering */
     const steer = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
     const target = steer * (7 + this.speed * 0.12);
-    this.vx += (target - this.vx) * Math.min(1, 9 * dt);
+    this.vx += (target - this.vx) * Math.min(1, (wet ? 6 : 9) * dt); // slippery in the rain
     this.px += this.vx * dt;
     if (this.px > MAX_X || this.px < -MAX_X) {
       this.px = clamp(this.px, -MAX_X, MAX_X);
@@ -1251,14 +1414,15 @@ export class DriveGame {
 
     /* ---- battery / pursuit (not in demo) */
     if (!demo) {
-      this.battery -= (BATTERY_BASE_DRAIN + this.speed * BATTERY_SPEED_DRAIN) * dt + (this.boosting ? BATTERY_BOOST_DRAIN * dt : 0);
+      const D = DIFFICULTY[this.difficulty];
+      this.battery -= ((BATTERY_BASE_DRAIN + this.speed * BATTERY_SPEED_DRAIN) * dt + (this.boosting && this.chai <= 0 ? BATTERY_BOOST_DRAIN * dt : 0)) * D.drain;
       if (this.battery < 25 && !this.lowWarned) {
         this.lowWarned = true;
         this.emit('lowBattery');
         this.audio.warn();
       } else if (this.battery > 38) this.lowWarned = false;
 
-      const chaserSpeed = 14 + this.level * 1.6;
+      const chaserSpeed = (14 + this.level * 1.6) * D.chaser;
       this.gap = clamp(this.gap + (this.speed - chaserSpeed) * dt * 0.35, 0, GAP_MAX);
       if (this.gap < 9 && !this.pursuitWarned) {
         this.pursuitWarned = true;
@@ -1271,12 +1435,21 @@ export class DriveGame {
     this.spawnT -= dt * (this.speed / 18);
     if (this.spawnT <= 0) {
       this.spawnTraffic();
-      this.spawnT = rand(0.5, 1.0) / (1 + this.level * 0.12);
+      this.spawnT = rand(0.5, 1.0) / (1 + this.level * 0.12) / DIFFICULTY[this.difficulty].traffic;
     }
     this.pickupT -= dt;
     if (this.pickupT <= 0) {
       this.spawnPickup();
       this.pickupT = rand(8, 12) + this.level * 0.5;
+    }
+    this.chaiT -= dt;
+    if (this.chaiT <= 0 && !demo) {
+      this.spawnChai();
+      this.chaiT = new URLSearchParams(window.location.search).has('fastchai') ? rand(4, 6) : rand(20, 30);
+    }
+    if (this.comboT > 0) {
+      this.comboT -= dt;
+      if (this.comboT <= 0) this.combo = 0;
     }
 
     /* ---- entities */
@@ -1316,9 +1489,13 @@ export class DriveGame {
         const gapX = dx - (PW + e.hw);
         if (gapX >= 0 && gapX < 1.0) {
           e.near = true;
-          const bonus = Math.round(30 + this.speed);
+          this.combo = this.comboT > 0 ? Math.min(9, this.combo + 1) : 1;
+          this.comboT = 4;
+          this.bestCombo = Math.max(this.bestCombo, this.combo);
+          this.nearMisses++;
+          const bonus = Math.round((30 + this.speed) * Math.min(5, this.combo));
           this.bonus += bonus;
-          this.emit('nearMiss', bonus);
+          this.emit('nearMiss', bonus, this.combo);
           this.audio.nearMiss();
         }
       }
@@ -1385,6 +1562,14 @@ export class DriveGame {
         this.emit('pickup');
         this.audio.pickup();
         return true;
+      case 'chai':
+        this.chai = CHAI_SECONDS;
+        this.chaiCount++;
+        this.bonus += 250;
+        this.battery = Math.min(100, this.battery + 8);
+        this.emit('chai');
+        this.audio.chai();
+        return true;
       case 'pothole':
         if (this.shield > 0) return false;
         this.speed *= 0.75;
@@ -1398,6 +1583,8 @@ export class DriveGame {
         // the pedestrian hops out of the way (no gore, just a penalty)
         e.vx = (e.x >= this.px ? 1 : -1) * 7;
         this.speed *= 0.6;
+        this.combo = 0;
+        this.comboT = 0;
         this.battery -= 4;
         this.gap = Math.max(0, this.gap - 3);
         this.damage += this.dmg('pedestrian');
@@ -1418,6 +1605,8 @@ export class DriveGame {
 
   private crash(e: Entity) {
     this.collisions++;
+    this.combo = 0;
+    this.comboT = 0;
     this.battery -= CRASH_BATTERY[e.kind] ?? 8;
     this.speed *= 0.35;
     this.invuln = 1.0;
@@ -1439,6 +1628,7 @@ export class DriveGame {
     if (this.mode === 'over') return;
     this.mode = 'over';
     this.audio.setEngine(0, false, false);
+    this.audio.setRain(false);
     this.audio.over();
     this.emitHud();
     this.cb.onOver({
@@ -1449,16 +1639,21 @@ export class DriveGame {
       time: Math.round(this.time),
       damage: this.damage,
       level: this.level,
-      reason
+      reason,
+      nearMisses: this.nearMisses,
+      chais: this.chaiCount,
+      bestCombo: this.bestCombo,
+      weather: this.weather,
+      difficulty: this.difficulty
     });
   }
 
   private score() {
-    return Math.floor(this.distance * 0.4) + this.bonus;
+    return Math.floor((this.distance * 0.4 + this.bonus) * DIFFICULTY[this.difficulty].score);
   }
 
-  private emit(type: EventType, value?: number) {
-    this.cb.onEvent({ type, value });
+  private emit(type: EventType, value?: number, extra?: number) {
+    this.cb.onEvent({ type, value, extra });
   }
 
   private emitHud() {
@@ -1475,7 +1670,10 @@ export class DriveGame {
       shield: this.shield,
       shieldCd: this.shieldCd,
       boosting: this.boosting,
-      invuln: this.invuln > 0
+      invuln: this.invuln > 0,
+      combo: this.combo,
+      chai: this.chai,
+      weather: this.weather
     });
   }
 
@@ -1522,6 +1720,29 @@ export class DriveGame {
     this.lampMats.red.color.setHex(p >= 5 ? 0xff2a2a : 0x3a0808);
 
     // pickups bob
-    for (const e of this.ents) if (e.spin) e.spin.position.y = 1.2 + Math.sin(t * 3 + e.z) * 0.15;
+    for (const e of this.ents) {
+      if (!e.spin) continue;
+      e.spin.position.y = 1.2 + Math.sin(t * 3 + e.z) * 0.15;
+      if (e.kind === 'chai' || e.kind === 'pickup') e.spin.rotation.y += dt * 1.8;
+    }
+
+    // rain streaks fall and rush past with the road
+    if (this.rain.visible && running) {
+      const p = this.rainPos;
+      const fall = 32 * dt;
+      const rush = this.speed * dt;
+      for (let i = 0; i < RAIN_DROPS; i++) {
+        const o = i * 6;
+        p[o + 1] -= fall;
+        p[o + 2] += rush;
+        if (p[o + 1] < 0 || p[o + 2] > 12) this.resetDrop(i, false);
+        else {
+          p[o + 3] = p[o];
+          p[o + 4] = p[o + 1] + 0.9;
+          p[o + 5] = p[o + 2] - 0.4;
+        }
+      }
+      (this.rain.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    }
   }
 }

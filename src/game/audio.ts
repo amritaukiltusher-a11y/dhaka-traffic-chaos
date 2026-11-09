@@ -52,6 +52,47 @@ export class SoundEngine {
     return buf;
   }
 
+  private rainSrc: AudioBufferSourceNode | null = null;
+  private rainGain: GainNode | null = null;
+
+  /** soft rain hiss (looping filtered noise) */
+  setRain(on: boolean) {
+    try {
+      if (!on) {
+        if (this.rainGain && this.ctx) this.rainGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15);
+        const src = this.rainSrc;
+        this.rainSrc = null;
+        this.rainGain = null;
+        if (src) window.setTimeout(() => { try { src.stop(); } catch { /* already stopped */ } }, 600);
+        return;
+      }
+      if (!this.ctx || !this.master || !this.noiseBuf || this.rainSrc) return;
+      const src = this.ctx.createBufferSource();
+      const f = this.ctx.createBiquadFilter();
+      const g = this.ctx.createGain();
+      src.buffer = this.noiseBuf;
+      src.loop = true;
+      f.type = 'bandpass';
+      f.frequency.value = 3200;
+      f.Q.value = 0.5;
+      g.gain.value = 0;
+      g.gain.setTargetAtTime(0.05, this.ctx.currentTime, 0.4);
+      src.connect(f).connect(g).connect(this.master);
+      src.start();
+      this.rainSrc = src;
+      this.rainGain = g;
+    } catch {
+      /* rain sound is optional */
+    }
+  }
+
+  /** gulp-and-ding for the tea power-up */
+  chai() {
+    this.tone(330, 0.1, 'sine', 0.1, 220);
+    this.tone(990, 0.18, 'triangle', 0.1, undefined, 0.12);
+    this.tone(1320, 0.25, 'triangle', 0.09, undefined, 0.24);
+  }
+
   private ready(): boolean {
     return !!(this.ctx && this.master && this.enabled && this.ctx.state === 'running');
   }

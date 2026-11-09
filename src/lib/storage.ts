@@ -2,6 +2,7 @@ import { createPersistedStore } from './store';
 
 export type Lang = 'bn' | 'en';
 export type Quality = 'low' | 'high';
+export type Difficulty = 'easy' | 'normal' | 'hard';
 
 /* ------------------------------------------------------------------ prefs */
 
@@ -10,6 +11,7 @@ export interface Prefs {
   sound: boolean;
   quality: Quality;
   nickname: string;
+  difficulty: Difficulty;
 }
 
 const isCoarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
@@ -18,7 +20,8 @@ export const DEFAULT_PREFS: Prefs = {
   lang: 'bn',
   sound: true,
   quality: isCoarse ? 'low' : 'high',
-  nickname: ''
+  nickname: '',
+  difficulty: 'normal'
 };
 
 export function sanitizeNickname(input: string): string {
@@ -34,7 +37,8 @@ export const prefsStore = createPersistedStore<Prefs>('dtc:prefs', DEFAULT_PREFS
     lang: r.lang === 'en' ? 'en' : 'bn',
     sound: typeof r.sound === 'boolean' ? r.sound : DEFAULT_PREFS.sound,
     quality: r.quality === 'low' || r.quality === 'high' ? r.quality : DEFAULT_PREFS.quality,
-    nickname: typeof r.nickname === 'string' ? sanitizeNickname(r.nickname) : ''
+    nickname: typeof r.nickname === 'string' ? sanitizeNickname(r.nickname) : '',
+    difficulty: r.difficulty === 'easy' || r.difficulty === 'hard' ? r.difficulty : 'normal'
   };
 });
 
@@ -137,6 +141,19 @@ export function addToTotals(run: { score: number; distance: number; collisions: 
     best: Math.max(t.best, run.score)
   }));
 }
+
+/* ----------------------------------------------------------------- badges */
+
+/** badge id -> unlock timestamp */
+export const badgesStore = createPersistedStore<Record<string, number>>('dtc:badges', {}, (raw) => {
+  const out: Record<string, number> = {};
+  if (raw && typeof raw === 'object') {
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (/^[a-z0-9-]{1,24}$/.test(k) && typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    }
+  }
+  return out;
+});
 
 /* ------------------------------------------------------------- newsletter */
 

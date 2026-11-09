@@ -47,6 +47,14 @@ export const EVENT_MESSAGES: Record<EventType, Pool> = {
     bn: ['ক্ষ্যাপা বাস পেছনে! জোরে চালান!', 'পেছনে গর্জন! বাসটা রেগে আছে!'],
     en: ['The Angry Bus is right behind you! Go faster!', 'A roar behind you! The bus is furious!']
   },
+  chai: {
+    bn: ['চা-ব্রেক টার্বো! ৭ সেকেন্ড ব্যাটারি-ফ্রি ছুট!', 'এক কাপ চায়ে ইঞ্জিন গরম!', 'চা খেলে গাড়ি আরও জোরে চলে (গুজব)!'],
+    en: ['Chai-break turbo! 7 seconds of battery-free speed!', 'One cup of tea and the engine is warm!', 'They say tea makes the auto faster (rumour)!']
+  },
+  weather: {
+    bn: ['গোধূলির ঢাকা — আকাশ কমলা, রাস্তা জমজমাট!', 'বৃষ্টি শুরু! রাস্তা পিচ্ছিল, সাবধানে!'],
+    en: ['Dhaka at dusk — orange sky, busy streets!', 'Rain has started! Slippery road, careful!']
+  },
   shield: {
     bn: ['জুগাড় শিল্ড চালু! কিছুক্ষণ অদৃশ্য ভান করুন।', 'জুগাড় শিল্ড! ধাক্কা আজ ছুটিতে।'],
     en: ['Jugaad Shield on! Pretend to be invisible for a bit.', 'Jugaad Shield! Crashes are on holiday.']
@@ -55,7 +63,7 @@ export const EVENT_MESSAGES: Record<EventType, Pool> = {
 
 export function eventMessage(type: EventType, lang: Lang, value?: number): string {
   const pool = EVENT_MESSAGES[type][lang];
-  const base = pool[Math.floor(Math.random() * pool.length)];
+  const base = type === 'weather' ? pool[Math.min(pool.length, Math.max(1, value ?? 1)) - 1] : pool[Math.floor(Math.random() * pool.length)];
   if (type === 'levelUp' && value) return `${base} ${value}`;
   return base;
 }

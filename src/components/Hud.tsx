@@ -24,6 +24,8 @@ function Bar({ value, color, label, valueText }: { value: number; color: string;
   );
 }
 
+const WEATHER_ICON = { night: '🌙', dusk: '🌇', rain: '🌧️' } as const;
+
 export default function Hud({ hud }: { hud: HudState }) {
   const { t, lang } = useLang();
   const batteryColor = hud.battery > 50 ? '#2fd27a' : hud.battery > 25 ? '#ffc21a' : '#ff4d3d';
@@ -51,7 +53,7 @@ export default function Hud({ hud }: { hud: HudState }) {
           </span>
           <span>{fmtTime(hud.time, lang)}</span>
           <span>
-            {t('hud.level')} {digits(hud.level, lang)}
+            {WEATHER_ICON[hud.weather]} {t('hud.level')} {digits(hud.level, lang)}
           </span>
         </div>
         <Bar value={hud.battery} color={batteryColor} label={t('hud.battery')} valueText={`${digits(Math.round(hud.battery), lang)}%`} />
@@ -61,12 +63,23 @@ export default function Hud({ hud }: { hud: HudState }) {
             {t('hud.speed')}: <b className="text-white">{digits(hud.speed, lang)}</b> {t('hud.kmh')}
           </span>
           <span className="flex gap-1">
-            {hud.boosting && <span className="rounded bg-sun px-1.5 py-0.5 font-bold text-black">{t('hud.boost')}</span>}
+            {hud.chai > 0 && (
+              <span className="rounded bg-amber-500 px-1.5 py-0.5 font-bold text-black">
+                ☕ {digits(Math.ceil(hud.chai), lang)}
+              </span>
+            )}
+            {hud.boosting && hud.chai <= 0 && <span className="rounded bg-sun px-1.5 py-0.5 font-bold text-black">{t('hud.boost')}</span>}
             <span className={`rounded px-1.5 py-0.5 font-bold ${hud.shield > 0 ? 'bg-sky text-black' : hud.shieldCd > 0 ? 'bg-slate-700 text-slate-300' : 'bg-leaf text-black'}`}>
               {t('hud.shield')} {hud.shield > 0 ? '●' : hud.shieldCd > 0 ? digits(Math.ceil(hud.shieldCd), lang) : t('hud.ready')}
             </span>
           </span>
         </div>
+        {hud.combo >= 2 && (
+          <div className="flex justify-between rounded bg-brick/80 px-1.5 py-0.5 text-[11px] font-bold text-white">
+            <span>🔥 {t('hud.combo')}</span>
+            <span>×{digits(Math.min(5, hud.combo), lang)}</span>
+          </div>
+        )}
         <div className="flex justify-between border-t border-white/15 pt-1 text-[11px] text-slate-200">
           <span>{t('hud.damage')}</span>
           <b className="text-brick">{fmtMoney(hud.damage, lang)}</b>

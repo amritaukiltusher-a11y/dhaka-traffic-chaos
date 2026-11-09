@@ -50,3 +50,13 @@ shout, and the same happens automatically on every crash. Lines live in `SOUND_B
 effects are synthesised in `src/game/audio.ts` (no audio files). The spoken voice uses the browser's built-in
 text-to-speech and is only heard on devices that have a Bengali (`bn`) voice installed (common on Android/Chrome and
 recent Windows/macOS); otherwise you still get the cartoon sound and the text bubble. The sound toggle (M) mutes it all.
+
+## Upgrades
+- **Near-miss combo:** chained close shaves multiply the bonus (up to x5).
+- **Chai power-up (☕):** 7 seconds of battery-free turbo; spawns every 20-30 s.
+- **Difficulty:** Easy / Normal / Hard (battery drain, traffic, chaser speed, score) chosen in the menu and remembered.
+- **Weather:** each run is night, dusk or rain (rain = streaks, rain sound, slippery steering). Testing aids: open the page with
+  `?weather=rain|dusk|night` and/or `?fastchai`.
+- **Badges:** nine local achievements (`src/game/achievements.ts`), stored in the browser only.
+- **Share:** the results screen has a share button (Web Share API, or copies the text).
+- **Haptics:** phones vibrate on crashes (when sound is on).

@@ -3,7 +3,9 @@ import { DriveGame, type GameResult, type HudState } from '../game/engine';
 import { InputManager } from '../game/input';
 import { SoundEngine } from '../game/audio';
 import { eventMessage, randomBomb, resultHeadline, type Headline } from '../game/content';
-import { addToTotals, patchPrefs, prefsStore, sanitizeNickname, submitScore, totalsStore } from '../lib/storage';
+import { awardBadges, type Badge } from '../game/achievements';
+import { GAME_NAME } from '../config';
+import { addToTotals, patchPrefs, prefsStore, sanitizeNickname, submitScore, totalsStore, type Difficulty } from '../lib/storage';
 import { useStore } from '../lib/store';
 import { fmtDistance, fmtMoney, fmtNum, fmtTime } from '../lib/format';
 import { useLang, type Key } from '../i18n';
@@ -20,7 +22,9 @@ interface Toast {
 }
 
 const BAD = new Set(['crash', 'pothole', 'pedestrian', 'lowBattery', 'pursuit']);
-const GOOD = new Set(['pickup', 'nearMiss', 'shield', 'boost']);
+const GOOD = new Set(['pickup', 'nearMiss', 'shield', 'boost', 'chai']);
+const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
+const WEATHER_ICON = { night: '🌙', dusk: '🌇', rain: '🌧️' } as const;
 
 const KEY_LEGEND: { keys: string; label: Key }[] = [
   { keys: 'W / ↑', label: 'ctl.accel' },
@@ -76,6 +80,8 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
   const [expanded, setExpanded] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const [nick, setNick] = useState(prefs.nickname);
+  const [newBadges, setNewBadges] = useState<Badge[]>([]);
+  const [shareMsg, setShareMsg] = useState('');
 
   const langRef = useRef(lang);
   langRef.current = lang;
@@ -141,7 +147,10 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
     audio.setEnabled(prefsStore.get().sound);
     const name = sanitizeNickname(nickRef.current);
     if (name !== prefsStore.get().nickname) patchPrefs({ nickname: name });
+    e.setDifficulty(prefsStore.get().difficulty);
     setSubmitted(false);
+    setNewBadges([]);
+    setShareMsg('');
     setResult(null);
     setHeadline(null);
     setHud(null);
@@ -156,6 +165,31 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
     }
     (document.activeElement as HTMLElement | null)?.blur?.();
   }, [audio, input, isTouch, setPhase]);
+
+  const shareResult = useCallback(async () => {
+    if (!result) return;
+    const l = langRef.current;
+    const name = GAME_NAME[l];
+    const text =
+      l === 'bn'
+        ? `আমি "${name}"-এ ${fmtNum(result.score, l)} পয়েন্ট করেছি, ${fmtDistance(result.distance, l)} চালিয়ে! পারলে হারিয়ে দাও 🛺`
+        : `I scored ${fmtNum(result.score, l)} in "${name}" and drove ${fmtDistance(result.distance, l)}! Beat me if you can 🛺`;
+    const url = window.location.href.split('#')[0];
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: name, text, url });
+        return;
+      }
+    } catch (err) {
+      if ((err as DOMException)?.name === 'AbortError') return;
+    }
+    try {
+      await navigator.clipboard.writeText(`${text} ${url}`);
+      setShareMsg(t('res.copied'));
+    } catch {
+      setShareMsg(`${text} ${url}`);
+    }
+  }, [result, t]);
 
   const backToMenu = useCallback(() => {
     engineRef.current?.startDemo();
@@ -181,15 +215,23 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
           {
             onHud: (h) => setHud(h),
             onEvent: (ev) => {
-              if ((ev.type === 'crash' || ev.type === 'pedestrian') && soundBombRef.current(true)) return;
+              if (ev.type === 'crash' || ev.type === 'pedestrian') {
+                try {
+                  if (prefsStore.get().sound) navigator.vibrate?.(ev.type === 'crash' ? [70, 40, 90] : 45); // haptic thud on phones
+                } catch {
+                  /* vibration is optional */
+                }
+                if (soundBombRef.current(true)) return;
+              }
               const tone: Toast['tone'] = BAD.has(ev.type) ? 'bad' : GOOD.has(ev.type) ? 'good' : 'info';
               let text = eventMessage(ev.type, langRef.current, ev.value);
-              if (ev.type === 'nearMiss' && ev.value) text += `  +${ev.value}`;
+              if (ev.type === 'nearMiss' && ev.value) text += `  +${ev.value}${ev.extra && ev.extra >= 2 ? `  🔥×${Math.min(5, ev.extra)}` : ''}`;
               showToast(text, tone);
             },
             onOver: (r) => {
               const prevBest = totalsStore.get().best;
               addToTotals(r);
+              setNewBadges(awardBadges(r, totalsStore.get()));
               setIsBest(r.score > 0 && r.score > prevBest);
               setResult(r);
               setHeadline(resultHeadline(r));
@@ -301,7 +343,7 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
       ref={wrapRef}
       aria-label={t('stage.label')}
       className={`overflow-hidden bg-ink text-white shadow-2xl ring-1 ring-line ${
-        expanded ? 'fixed inset-0 z-[70] h-[100dvh] w-screen' : 'relative aspect-[4/3] w-full rounded-2xl sm:aspect-[16/10]'
+        expanded ? 'fixed inset-0 z-[70] h-[100dvh] w-screen' : 'relative aspect-[4/5] w-full rounded-2xl sm:aspect-[16/10]'
       }`}
       style={{ touchAction: playing ? 'none' : 'auto', overscrollBehavior: 'contain' }}
     >
@@ -412,6 +454,25 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
               className="rounded-lg border border-line bg-black/70 px-3 py-2 text-white placeholder:text-slate-400"
             />
           </div>
+          <div className="mb-3 flex w-full max-w-sm flex-col gap-1 text-left">
+            <span id="diff-label" className="text-xs font-semibold text-slate-200">
+              {t('stage.difficulty')}
+            </span>
+            <div role="radiogroup" aria-labelledby="diff-label" className="grid grid-cols-3 gap-1.5">
+              {DIFFICULTIES.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  role="radio"
+                  aria-checked={prefs.difficulty === d}
+                  onClick={() => patchPrefs({ difficulty: d })}
+                  className={`rounded-lg border px-2 py-1.5 text-sm font-semibold ${prefs.difficulty === d ? 'border-sun bg-sun text-black' : 'border-line bg-black/60 text-white hover:bg-black/80'}`}
+                >
+                  {t(`diff.${d}` as Key)}
+                </button>
+              ))}
+            </div>
+          </div>
           <button type="button" className="btn-primary text-lg" onClick={startGame}>
             {t('stage.start')}
           </button>
@@ -484,6 +545,23 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
               ))}
             </dl>
 
+            <p className="mt-2 text-center text-xs text-slate-300">
+              {WEATHER_ICON[result.weather]} {t(`weather.${result.weather}` as Key)} · {t(`diff.${result.difficulty}` as Key)} · {t('res.nearMisses')}: {fmtNum(result.nearMisses, lang)} · {t('res.bestCombo')}: ×{fmtNum(Math.min(5, result.bestCombo), lang)} · ☕ {fmtNum(result.chais, lang)}
+            </p>
+
+            {newBadges.length > 0 && (
+              <div className="mt-3 rounded-lg border border-leaf/50 bg-leaf/10 p-3" role="status">
+                <p className="text-sm font-semibold text-leaf">🏅 {t('res.newBadges')}</p>
+                <ul className="mt-1 flex flex-wrap gap-2">
+                  {newBadges.map((b) => (
+                    <li key={b.id} className="rounded-full bg-black/50 px-3 py-1 text-sm text-white">
+                      {b.icon} {lang === 'bn' ? b.bn : b.en}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {headline && (
               <figure className="mt-3 rounded-lg border border-sun/40 bg-sun/10 p-3">
                 <figcaption className="text-[11px] font-semibold uppercase tracking-wide text-sun">{t('res.headlineLabel')} · {t('common.fictional')}</figcaption>
@@ -502,6 +580,14 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
                 {t('stage.menu')}
               </button>
             </div>
+            <button type="button" className="btn-ghost mt-2 w-full" onClick={shareResult}>
+              📤 {t('res.share')}
+            </button>
+            {shareMsg && (
+              <p role="status" className="mt-2 text-center text-sm text-leaf">
+                {shareMsg}
+              </p>
+            )}
           </div>
         </div>
       )}
