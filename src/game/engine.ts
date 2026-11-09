@@ -93,7 +93,13 @@ interface Entity {
   spin?: THREE.Object3D;
 }
 
-const CRASH_BATTERY: Partial<Record<Kind, number>> = { bus: 14, truck: 14, car: 10, cng: 8, bike: 6, rickshaw: 6, barrier: 8, stall: 7 };
+const CRASH_BATTERY: Partial<Record<Kind, number>> = { bus: 10, truck: 10, car: 7, cng: 6, bike: 4, rickshaw: 4, barrier: 6, stall: 5 };
+
+/* battery tuning: drain per second = BASE + speed * PER_MS (+ BOOST while boosting); one charge pickup gives PICKUP_GAIN % */
+const BATTERY_BASE_DRAIN = 0.42;
+const BATTERY_SPEED_DRAIN = 0.016;
+const BATTERY_BOOST_DRAIN = 3;
+const PICKUP_GAIN = 35;
 const CRASH_DAMAGE: Partial<Record<Kind, number>> = {
   bus: 450_000,
   truck: 520_000,
@@ -526,7 +532,7 @@ export class DriveGame {
   private boosting = false;
   private shake = 0;
   private spawnT = 0;
-  private pickupT = 8;
+  private pickupT = 5;
   private lowWarned = false;
   private pursuitWarned = false;
   private lampPhase = 0;
@@ -978,7 +984,7 @@ export class DriveGame {
     this.boosting = false;
     this.shake = 0;
     this.spawnT = 0.4;
-    this.pickupT = 7;
+    this.pickupT = 5;
     this.lowWarned = false;
     this.pursuitWarned = false;
     this.camX = this.px;
@@ -1235,8 +1241,8 @@ export class DriveGame {
 
     /* ---- actions */
     if (hornEdge && this.hornCd <= 0) this.doHorn();
-    if (specialEdge && !demo && this.shieldCd <= 0 && this.battery > 8 && this.shield <= 0) {
-      this.battery -= 8;
+    if (specialEdge && !demo && this.shieldCd <= 0 && this.battery > 6 && this.shield <= 0) {
+      this.battery -= 5;
       this.shield = 1.6;
       this.shieldCd = 9;
       this.emit('shield');
@@ -1245,7 +1251,7 @@ export class DriveGame {
 
     /* ---- battery / pursuit (not in demo) */
     if (!demo) {
-      this.battery -= (0.7 + this.speed * 0.028) * dt + (this.boosting ? 4.5 * dt : 0);
+      this.battery -= (BATTERY_BASE_DRAIN + this.speed * BATTERY_SPEED_DRAIN) * dt + (this.boosting ? BATTERY_BOOST_DRAIN * dt : 0);
       if (this.battery < 25 && !this.lowWarned) {
         this.lowWarned = true;
         this.emit('lowBattery');
@@ -1270,7 +1276,7 @@ export class DriveGame {
     this.pickupT -= dt;
     if (this.pickupT <= 0) {
       this.spawnPickup();
-      this.pickupT = rand(12, 18) + this.level * 0.8;
+      this.pickupT = rand(8, 12) + this.level * 0.5;
     }
 
     /* ---- entities */
@@ -1374,7 +1380,7 @@ export class DriveGame {
     e.hit = true;
     switch (e.kind) {
       case 'pickup':
-        this.battery = Math.min(100, this.battery + 22);
+        this.battery = Math.min(100, this.battery + PICKUP_GAIN);
         this.bonus += 120;
         this.emit('pickup');
         this.audio.pickup();
