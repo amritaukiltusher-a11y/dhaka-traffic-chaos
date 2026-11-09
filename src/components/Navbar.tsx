@@ -6,6 +6,7 @@ const LINKS: { href: string; key: Key }[] = [
   { href: '#how', key: 'nav.how' },
   { href: '#stats', key: 'nav.stats' },
   { href: '#news', key: 'nav.news' },
+  { href: '#garage', key: 'nav.garage' },
   { href: '#leaderboard', key: 'nav.board' },
   { href: '#install', key: 'nav.install' }
 ];

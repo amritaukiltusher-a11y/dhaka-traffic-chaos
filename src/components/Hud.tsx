@@ -63,6 +63,11 @@ export default function Hud({ hud }: { hud: HudState }) {
             {t('hud.speed')}: <b className="text-white">{digits(hud.speed, lang)}</b> {t('hud.kmh')}
           </span>
           <span className="flex gap-1">
+            {hud.coins > 0 && (
+              <span className="rounded bg-yellow-400 px-1.5 py-0.5 font-bold text-black">
+                🪙 {digits(hud.coins, lang)}
+              </span>
+            )}
             {hud.chai > 0 && (
               <span className="rounded bg-amber-500 px-1.5 py-0.5 font-bold text-black">
                 ☕ {digits(Math.ceil(hud.chai), lang)}

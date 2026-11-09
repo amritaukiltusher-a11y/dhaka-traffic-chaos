@@ -13,7 +13,7 @@ const KEYS: { keys: string[]; label: Key }[] = [
   { keys: ['Esc'], label: 'ctl.pause' }
 ];
 
-const RULES: Key[] = ['ctl.rule1', 'ctl.rule2', 'ctl.rule3', 'ctl.rule4', 'ctl.rule5', 'ctl.rule6', 'ctl.rule7', 'ctl.rule8'];
+const RULES: Key[] = ['ctl.rule1', 'ctl.rule2', 'ctl.rule3', 'ctl.rule4', 'ctl.rule5', 'ctl.rule6', 'ctl.rule7', 'ctl.rule8', 'ctl.rule9'];
 
 export default function HowToPlay() {
   const { t } = useLang();

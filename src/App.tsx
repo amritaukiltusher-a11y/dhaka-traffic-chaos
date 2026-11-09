@@ -8,6 +8,7 @@ import Stats from './components/Stats';
 import News from './components/News';
 import Leaderboard from './components/Leaderboard';
 import Badges from './components/Badges';
+import Garage from './components/Garage';
 import Newsletter from './components/Newsletter';
 import InstallGuide from './components/InstallGuide';
 import Footer from './components/Footer';
@@ -51,6 +52,7 @@ function Page() {
         <Stats />
         <News />
         <Leaderboard />
+        <Garage />
         <Badges />
         <Newsletter />
         <InstallGuide />

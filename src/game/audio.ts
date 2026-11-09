@@ -86,6 +86,57 @@ export class SoundEngine {
     }
   }
 
+  /** bright "ting" for a taka coin; the pitch climbs with the streak (0-4) */
+  coin(streak = 0) {
+    const f = 1175 * Math.pow(1.122, streak);
+    this.tone(f, 0.07, 'square', 0.045);
+    this.tone(f * 1.5, 0.14, 'square', 0.045, undefined, 0.06);
+  }
+
+  private musicTimer: number | null = null;
+  private musicNext = 0;
+  private musicStep = 0;
+  private musicNote = 3;
+
+  /**
+   * A tiny procedural background tune: dhol-style kick and tik over a bass line, with a wandering melody in a
+   * Bhairavi-like scale. Nothing is downloaded or licensed; it is generated live.
+   */
+  setMusic(on: boolean) {
+    if (!on) {
+      if (this.musicTimer !== null) window.clearInterval(this.musicTimer);
+      this.musicTimer = null;
+      return;
+    }
+    if (!this.ctx || this.musicTimer !== null) return;
+    this.musicNext = this.ctx.currentTime + 0.15;
+    this.musicStep = 0;
+    this.musicTimer = window.setInterval(() => this.scheduleMusic(), 100);
+  }
+
+  private scheduleMusic() {
+    const ctx = this.ctx;
+    if (!ctx || !this.enabled) {
+      if (ctx) this.musicNext = Math.max(this.musicNext, ctx.currentTime);
+      return;
+    }
+    const SCALE = [293.66, 311.13, 349.23, 392, 440, 466.16, 523.25, 587.33];
+    const eighth = 60 / 104 / 2;
+    while (this.musicNext < ctx.currentTime + 0.4) {
+      const d = this.musicNext - ctx.currentTime;
+      const s = this.musicStep % 16;
+      if (s % 4 === 0) this.tone(s % 8 === 0 ? 146.83 : 110, eighth * 3.2, 'triangle', 0.07, undefined, d);
+      if (s === 0 || s === 6 || s === 8 || s === 14) this.tone(120, 0.12, 'sine', 0.1, 48, d);
+      if (s % 2 === 1) this.tone(1900, 0.03, 'square', 0.012, undefined, d);
+      if (Math.random() < (s % 2 === 0 ? 0.7 : 0.35)) {
+        this.musicNote = Math.max(0, Math.min(SCALE.length - 1, this.musicNote + Math.floor(Math.random() * 5) - 2));
+        this.tone(SCALE[this.musicNote], eighth * 1.6, 'triangle', 0.05, undefined, d);
+      }
+      this.musicNext += eighth;
+      this.musicStep++;
+    }
+  }
+
   /** gulp-and-ding for the tea power-up */
   chai() {
     this.tone(330, 0.1, 'sine', 0.1, 220);
@@ -283,6 +334,7 @@ export class SoundEngine {
   }
 
   dispose() {
+    this.setMusic(false);
     this.stopSpeech();
     this.stopEngine();
     void this.ctx?.close();

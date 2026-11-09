@@ -7,6 +7,17 @@ import type { Difficulty, Quality } from '../lib/storage';
 
 export type Weather = 'night' | 'dusk' | 'rain';
 
+/** garage upgrade levels (0-3) and the player's paint colour */
+export interface Loadout {
+  battery: number;
+  magnet: number;
+  shield: number;
+  chai: number;
+  paint: number;
+}
+
+const MAGNET_RADIUS = [0, 3, 5, 7];
+
 export type EventType =
   | 'crash'
   | 'nearMiss'
@@ -45,6 +56,7 @@ export interface HudState {
   combo: number; // current near-miss chain (0 = none)
   chai: number; // seconds of free-boost left
   weather: Weather;
+  coins: number; // taka collected this run
 }
 
 export interface GameResult {
@@ -61,6 +73,7 @@ export interface GameResult {
   bestCombo: number;
   weather: Weather;
   difficulty: Difficulty;
+  coins: number;
 }
 
 export interface EngineCallbacks {
@@ -86,7 +99,7 @@ const PL = 1.3; // player half-length
 const MAX_X = 5.3;
 const GAP_MAX = 30;
 
-type Kind = 'car' | 'bus' | 'truck' | 'cng' | 'bike' | 'rickshaw' | 'barrier' | 'pothole' | 'stall' | 'pedestrian' | 'pickup' | 'chai';
+type Kind = 'car' | 'bus' | 'truck' | 'cng' | 'bike' | 'rickshaw' | 'barrier' | 'pothole' | 'stall' | 'pedestrian' | 'pickup' | 'chai' | 'coin';
 
 interface Entity {
   kind: Kind;
@@ -328,7 +341,7 @@ class Factory {
   rickshaw() {
     const grp = new THREE.Group();
     const wheels: THREE.Object3D[] = [];
-    const body = this.lam(0x237d33);
+    const body = this.keep('player-body', new THREE.MeshLambertMaterial({ color: 0x237d33 }));
     const olive = this.lam(0x5f6a4d);
     const dark = this.lam(0x1a1c22);
     const L = this.vehicleLabels();
@@ -363,7 +376,7 @@ class Factory {
       grp.add(w);
       wheels.push(w);
     }
-    return { grp, wheels };
+    return { grp, wheels, bodyMat: body };
   }
 
   car() {
@@ -470,6 +483,19 @@ class Factory {
     grp.add(core);
     this.add(grp, this.cyl(0.8, 0.8, 0.02, 20), this.glass(0x3dff88, 0.35), 0, 0.03, 0);
     return { grp, core, hw: 0.8, hl: 0.8 };
+  }
+
+  /** a spinning gold taka coin */
+  coin() {
+    const grp = new THREE.Group();
+    const core = new THREE.Group();
+    const disc = this.add(core, this.cyl(0.42, 0.42, 0.1, 18), this.basic(0xffc21a), 0, 0, 0);
+    disc.rotation.x = Math.PI / 2;
+    const ring = this.add(core, this.cyl(0.3, 0.3, 0.12, 18), this.basic(0xffe58a), 0, 0, 0);
+    ring.rotation.x = Math.PI / 2;
+    core.position.y = 1.0;
+    grp.add(core);
+    return { grp, core, hw: 0.5, hl: 0.5 };
   }
 
   /** tea-cup power-up: a free, battery-less boost for a few seconds */
@@ -580,6 +606,10 @@ export class DriveGame {
   private shake = 0;
   private spawnT = 0;
   private pickupT = 5;
+  private loadout: Loadout = { battery: 0, magnet: 0, shield: 0, chai: 0, paint: 0x237d33 };
+  private bodyMat!: THREE.MeshLambertMaterial;
+  private coins = 0;
+  private coinT = 3;
   private chaiT = 14;
   private chai = 0;
   private chaiCount = 0;
@@ -662,6 +692,7 @@ export class DriveGame {
 
     const r = this.f.rickshaw();
     this.player = r.grp;
+    this.bodyMat = r.bodyMat;
     this.playerWheels = r.wheels;
     this.scene.add(this.player);
 
@@ -700,6 +731,11 @@ export class DriveGame {
 
   setDifficulty(d: Difficulty) {
     this.difficulty = d;
+  }
+
+  setLoadout(l: Loadout) {
+    this.loadout = l;
+    this.bodyMat.color.setHex(l.paint);
   }
 
   startRun() {
@@ -1116,6 +1152,8 @@ export class DriveGame {
     this.chaiT = new URLSearchParams(window.location.search).has('fastchai') ? 1.5 : 14; // ?fastchai: testing aid
     this.chai = 0;
     this.chaiCount = 0;
+    this.coins = 0;
+    this.coinT = 3;
     this.combo = 0;
     this.comboT = 0;
     this.bestCombo = 0;
@@ -1195,6 +1233,9 @@ export class DriveGame {
         break;
       case 'chai':
         b = this.f.chai();
+        break;
+      case 'coin':
+        b = this.f.coin();
         break;
     }
     const e: Entity = {
@@ -1288,6 +1329,19 @@ export class DriveGame {
     }
   }
 
+  /** a row of five coins in a free lane */
+  private spawnCoins() {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const lane = Math.floor(Math.random() * 4);
+      if (!this.laneFree(lane, SPAWN_Z - 10, 30)) continue;
+      for (let i = 0; i < 5; i++) {
+        const c = this.makeEntity('coin', lane, SPAWN_Z - i * 5);
+        if (c) this.ents.push(c);
+      }
+      return;
+    }
+  }
+
   private spawnChai() {
     for (let attempt = 0; attempt < 4; attempt++) {
       const lane = Math.floor(Math.random() * 4);
@@ -1330,7 +1384,7 @@ export class DriveGame {
     LANES.forEach((lx, i) => {
       let clear = 120;
       for (const e of this.ents) {
-        if (e.kind === 'pickup' || e.kind === 'chai' || e.z > 3 || e.z < -75) continue;
+        if (e.kind === 'pickup' || e.kind === 'chai' || e.kind === 'coin' || e.z > 3 || e.z < -75) continue;
         if (Math.abs(e.x - lx) < e.hw + PW + 0.6) clear = Math.min(clear, -e.z - e.hl);
       }
       const score = clear - Math.abs(lx - this.px) * 4 + (Math.abs(lx - this.px) < 0.5 ? 10 : 0);
@@ -1406,7 +1460,7 @@ export class DriveGame {
     if (hornEdge && this.hornCd <= 0) this.doHorn();
     if (specialEdge && !demo && this.shieldCd <= 0 && this.battery > 6 && this.shield <= 0) {
       this.battery -= 5;
-      this.shield = 1.6;
+      this.shield = 1.6 + 0.6 * this.loadout.shield;
       this.shieldCd = 9;
       this.emit('shield');
       this.audio.shield();
@@ -1415,7 +1469,7 @@ export class DriveGame {
     /* ---- battery / pursuit (not in demo) */
     if (!demo) {
       const D = DIFFICULTY[this.difficulty];
-      this.battery -= ((BATTERY_BASE_DRAIN + this.speed * BATTERY_SPEED_DRAIN) * dt + (this.boosting && this.chai <= 0 ? BATTERY_BOOST_DRAIN * dt : 0)) * D.drain;
+      this.battery -= ((BATTERY_BASE_DRAIN + this.speed * BATTERY_SPEED_DRAIN) * dt + (this.boosting && this.chai <= 0 ? BATTERY_BOOST_DRAIN * dt : 0)) * D.drain * (1 - 0.08 * this.loadout.battery);
       if (this.battery < 25 && !this.lowWarned) {
         this.lowWarned = true;
         this.emit('lowBattery');
@@ -1442,6 +1496,11 @@ export class DriveGame {
       this.spawnPickup();
       this.pickupT = rand(8, 12) + this.level * 0.5;
     }
+    this.coinT -= dt;
+    if (this.coinT <= 0 && !demo) {
+      this.spawnCoins();
+      this.coinT = rand(6, 9);
+    }
     this.chaiT -= dt;
     if (this.chaiT <= 0 && !demo) {
       this.spawnChai();
@@ -1463,6 +1522,10 @@ export class DriveGame {
         e.x += Math.sign(d) * Math.min(Math.abs(d), 2.8 * dt);
         if (Math.abs(e.targetX - e.x) < 0.01) e.targetX = undefined;
       } else if (e.vx) e.x += e.vx * dt;
+      const mag = MAGNET_RADIUS[this.loadout.magnet] ?? 0;
+      if (mag > 0 && (e.kind === 'coin' || e.kind === 'pickup' || e.kind === 'chai') && e.z > -16 && e.z < 2 && Math.abs(e.x - this.px) < mag) {
+        e.x += (this.px - e.x) * Math.min(1, 6 * dt); // the magnet upgrade pulls collectibles in
+      }
       e.obj.position.x = e.x;
       e.obj.position.z = e.z;
       if (e.spin) e.spin.rotation.y += dt * 3;
@@ -1562,8 +1625,13 @@ export class DriveGame {
         this.emit('pickup');
         this.audio.pickup();
         return true;
+      case 'coin':
+        this.coins++;
+        this.bonus += 10;
+        this.audio.coin(this.coins % 5);
+        return true;
       case 'chai':
-        this.chai = CHAI_SECONDS;
+        this.chai = CHAI_SECONDS + 1.5 * this.loadout.chai;
         this.chaiCount++;
         this.bonus += 250;
         this.battery = Math.min(100, this.battery + 8);
@@ -1644,7 +1712,8 @@ export class DriveGame {
       chais: this.chaiCount,
       bestCombo: this.bestCombo,
       weather: this.weather,
-      difficulty: this.difficulty
+      difficulty: this.difficulty,
+      coins: this.coins
     });
   }
 
@@ -1673,7 +1742,8 @@ export class DriveGame {
       invuln: this.invuln > 0,
       combo: this.combo,
       chai: this.chai,
-      weather: this.weather
+      weather: this.weather,
+      coins: this.coins
     });
   }
 

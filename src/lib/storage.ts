@@ -9,6 +9,7 @@ export type Difficulty = 'easy' | 'normal' | 'hard';
 export interface Prefs {
   lang: Lang;
   sound: boolean;
+  music: boolean;
   quality: Quality;
   nickname: string;
   difficulty: Difficulty;
@@ -19,6 +20,7 @@ const isCoarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer:
 export const DEFAULT_PREFS: Prefs = {
   lang: 'bn',
   sound: true,
+  music: false,
   quality: isCoarse ? 'low' : 'high',
   nickname: '',
   difficulty: 'normal'
@@ -36,6 +38,7 @@ export const prefsStore = createPersistedStore<Prefs>('dtc:prefs', DEFAULT_PREFS
   return {
     lang: r.lang === 'en' ? 'en' : 'bn',
     sound: typeof r.sound === 'boolean' ? r.sound : DEFAULT_PREFS.sound,
+    music: typeof r.music === 'boolean' ? r.music : DEFAULT_PREFS.music,
     quality: r.quality === 'low' || r.quality === 'high' ? r.quality : DEFAULT_PREFS.quality,
     nickname: typeof r.nickname === 'string' ? sanitizeNickname(r.nickname) : '',
     difficulty: r.difficulty === 'easy' || r.difficulty === 'hard' ? r.difficulty : 'normal'
@@ -141,6 +144,52 @@ export function addToTotals(run: { score: number; distance: number; collisions: 
     best: Math.max(t.best, run.score)
   }));
 }
+
+/* ------------------------------------------------------------------ wallet */
+
+export type PaintId = 'green' | 'sun' | 'red' | 'blue' | 'pink' | 'black';
+export const PAINT_IDS: PaintId[] = ['green', 'sun', 'red', 'blue', 'pink', 'black'];
+export type UpgradeId = 'battery' | 'magnet' | 'shield' | 'chai';
+export const UPGRADE_IDS: UpgradeId[] = ['battery', 'magnet', 'shield', 'chai'];
+export const MAX_UPGRADE = 3;
+
+/** Fictional in-game "taka": earned by driving, spent in the garage. Stored in the browser only. */
+export interface Wallet {
+  taka: number;
+  up: Record<UpgradeId, number>;
+  paint: PaintId;
+  owned: PaintId[];
+}
+
+const DEFAULT_WALLET: Wallet = { taka: 0, up: { battery: 0, magnet: 0, shield: 0, chai: 0 }, paint: 'green', owned: ['green'] };
+
+export const walletStore = createPersistedStore<Wallet>('dtc:wallet', DEFAULT_WALLET, (raw) => {
+  const r = (raw ?? {}) as Partial<Wallet>;
+  const lvl = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(MAX_UPGRADE, Math.floor(v))) : 0);
+  const up = (r.up ?? {}) as Partial<Record<UpgradeId, unknown>>;
+  const owned = Array.isArray(r.owned) ? (r.owned.filter((p) => PAINT_IDS.includes(p as PaintId)) as PaintId[]) : [];
+  if (!owned.includes('green')) owned.unshift('green');
+  const paint = PAINT_IDS.includes(r.paint as PaintId) && owned.includes(r.paint as PaintId) ? (r.paint as PaintId) : 'green';
+  return {
+    taka: typeof r.taka === 'number' && Number.isFinite(r.taka) ? Math.max(0, Math.min(1e9, Math.floor(r.taka))) : 0,
+    up: { battery: lvl(up.battery), magnet: lvl(up.magnet), shield: lvl(up.shield), chai: lvl(up.chai) },
+    paint,
+    owned
+  };
+});
+
+export function addTaka(n: number) {
+  if (n > 0) walletStore.update((w) => ({ ...w, taka: w.taka + Math.floor(n) }));
+}
+
+/** today's completed missions */
+export const missionsStore = createPersistedStore<{ day: string; done: string[] }>('dtc:missions', { day: '', done: [] }, (raw) => {
+  const r = (raw ?? {}) as { day?: unknown; done?: unknown };
+  return {
+    day: typeof r.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.day) ? r.day : '',
+    done: Array.isArray(r.done) ? r.done.filter((d): d is string => typeof d === 'string' && /^[a-z0-9-]{1,24}$/.test(d)) : []
+  };
+});
 
 /* ----------------------------------------------------------------- badges */
 

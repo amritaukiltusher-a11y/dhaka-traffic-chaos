@@ -59,6 +59,9 @@ export class InputManager {
   private touches: Record<Action, Set<number>>;
   private handlers: InputHandlers;
   private attached = false;
+  private pad: Record<Action, boolean> = { left: false, right: false, accel: false, brake: false, boost: false, horn: false, special: false };
+  private padRaf = 0;
+  private padPrev = { pause: false, bomb: false };
 
   constructor(handlers: InputHandlers) {
     this.handlers = handlers;
@@ -78,7 +81,7 @@ export class InputManager {
   }
 
   private recompute() {
-    for (const a of ACTIONS) this.state[a] = this.keys[a].size > 0 || this.touches[a].size > 0;
+    for (const a of ACTIONS) this.state[a] = this.keys[a].size > 0 || this.touches[a].size > 0 || this.pad[a];
   }
 
   releaseAll() {
@@ -132,9 +135,61 @@ export class InputManager {
     this.recompute();
   }
 
+  /* ---- gamepad (standard mapping): stick/d-pad steer, A/RT accelerate, B/LT brake, X boost, Y shield,
+     LB horn, RB sound bomb, Start pause */
+  private pollPad = () => {
+    this.padRaf = 0;
+    let gp: Gamepad | null = null;
+    try {
+      gp = Array.from(navigator.getGamepads?.() ?? []).find((g): g is Gamepad => !!g && g.connected) ?? null;
+    } catch {
+      gp = null;
+    }
+    if (!gp) {
+      this.stopPad();
+      return;
+    }
+    const b = (i: number) => !!gp!.buttons[i]?.pressed;
+    const v = (i: number) => gp!.buttons[i]?.value ?? 0;
+    const ax = gp.axes[0] ?? 0;
+    const next: Record<Action, boolean> = {
+      left: ax < -0.3 || b(14),
+      right: ax > 0.3 || b(15),
+      accel: b(0) || v(7) > 0.3 || b(12),
+      brake: b(1) || v(6) > 0.3 || b(13),
+      boost: b(2),
+      special: b(3),
+      horn: b(4)
+    };
+    let changed = false;
+    for (const a of ACTIONS) if (next[a] !== this.pad[a]) changed = true;
+    this.pad = next;
+    if (changed) this.recompute();
+    const pause = b(9);
+    if (pause && !this.padPrev.pause) this.handlers.onPause();
+    this.padPrev.pause = pause;
+    const bomb = b(5);
+    if (bomb && !this.padPrev.bomb) this.handlers.onBomb();
+    this.padPrev.bomb = bomb;
+    this.padRaf = requestAnimationFrame(this.pollPad);
+  };
+
+  private startPad = () => {
+    if (!this.padRaf && this.attached) this.padRaf = requestAnimationFrame(this.pollPad);
+  };
+
+  private stopPad() {
+    if (this.padRaf) cancelAnimationFrame(this.padRaf);
+    this.padRaf = 0;
+    this.pad = { left: false, right: false, accel: false, brake: false, boost: false, horn: false, special: false };
+    this.recompute();
+  }
+
   attach() {
     if (this.attached) return;
     this.attached = true;
+    window.addEventListener('gamepadconnected', this.startPad);
+    this.startPad(); // a pad that was already connected before the page opened
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
@@ -144,6 +199,8 @@ export class InputManager {
   detach() {
     if (!this.attached) return;
     this.attached = false;
+    window.removeEventListener('gamepadconnected', this.startPad);
+    this.stopPad();
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);

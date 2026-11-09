@@ -4,8 +4,10 @@ import { InputManager } from '../game/input';
 import { SoundEngine } from '../game/audio';
 import { eventMessage, randomBomb, resultHeadline, type Headline } from '../game/content';
 import { awardBadges, type Badge } from '../game/achievements';
+import { loadoutFrom } from '../game/garage';
+import { completeMissions, type Mission } from '../game/missions';
 import { GAME_NAME } from '../config';
-import { addToTotals, patchPrefs, prefsStore, sanitizeNickname, submitScore, totalsStore, type Difficulty } from '../lib/storage';
+import { addTaka, addToTotals, patchPrefs, prefsStore, sanitizeNickname, submitScore, totalsStore, walletStore, type Difficulty } from '../lib/storage';
 import { useStore } from '../lib/store';
 import { fmtDistance, fmtMoney, fmtNum, fmtTime } from '../lib/format';
 import { useLang, type Key } from '../i18n';
@@ -81,6 +83,8 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
   const [retryKey, setRetryKey] = useState(0);
   const [nick, setNick] = useState(prefs.nickname);
   const [newBadges, setNewBadges] = useState<Badge[]>([]);
+  const [payout, setPayout] = useState<{ earned: number; coins: number; total: number; missions: Mission[] } | null>(null);
+  const wallet = useStore(walletStore);
   const [shareMsg, setShareMsg] = useState('');
 
   const langRef = useRef(lang);
@@ -148,6 +152,12 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
     const name = sanitizeNickname(nickRef.current);
     if (name !== prefsStore.get().nickname) patchPrefs({ nickname: name });
     e.setDifficulty(prefsStore.get().difficulty);
+    e.setLoadout(loadoutFrom(walletStore.get()));
+    if (prefsStore.get().music) {
+      audio.unlock();
+      audio.setMusic(true);
+    }
+    setPayout(null);
     setSubmitted(false);
     setNewBadges([]);
     setShareMsg('');
@@ -232,6 +242,10 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
               const prevBest = totalsStore.get().best;
               addToTotals(r);
               setNewBadges(awardBadges(r, totalsStore.get()));
+              const done = completeMissions(r);
+              const earned = r.coins + Math.floor(r.score / 250) + done.reduce((n, m) => n + m.reward, 0);
+              addTaka(earned);
+              setPayout({ earned, coins: r.coins, total: walletStore.get().taka, missions: done });
               setIsBest(r.score > 0 && r.score > prevBest);
               setResult(r);
               setHeadline(resultHeadline(r));
@@ -245,6 +259,7 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
           prefsStore.get().quality
         );
         engineRef.current = engine;
+        engine.setLoadout(loadoutFrom(walletStore.get()));
         engine.startDemo();
         setPhase('menu');
         if (pendingStart.current) {
@@ -284,6 +299,10 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
     input.attach();
     return () => input.detach();
   }, [input, togglePause, toggleSound]);
+
+  useEffect(() => {
+    if (phase !== 'playing') engineRef.current?.setLoadout(loadoutFrom(wallet));
+  }, [wallet, phase]);
 
   useEffect(() => {
     input.captureKeys = phase === 'playing' || phase === 'paused';
@@ -393,6 +412,18 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
           )}
           <IconButton label={prefs.sound ? t('stage.soundOn') : t('stage.soundOff')} onClick={toggleSound} pressed={prefs.sound}>
             {prefs.sound ? '🔊' : '🔇'}
+          </IconButton>
+          <IconButton
+            label={t('stage.music')}
+            pressed={prefs.music}
+            onClick={() => {
+              const on = !prefs.music;
+              patchPrefs({ music: on });
+              audio.unlock();
+              audio.setMusic(on);
+            }}
+          >
+            {prefs.music ? '🎵' : '🎶'}
           </IconButton>
           <IconButton
             label={`${t('stage.quality')}: ${prefs.quality === 'low' ? t('stage.qualityLow') : t('stage.qualityHigh')}`}
@@ -548,6 +579,13 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
             <p className="mt-2 text-center text-xs text-slate-300">
               {WEATHER_ICON[result.weather]} {t(`weather.${result.weather}` as Key)} · {t(`diff.${result.difficulty}` as Key)} · {t('res.nearMisses')}: {fmtNum(result.nearMisses, lang)} · {t('res.bestCombo')}: ×{fmtNum(Math.min(5, result.bestCombo), lang)} · ☕ {fmtNum(result.chais, lang)}
             </p>
+
+            {payout && (
+              <p className="mt-3 rounded-lg bg-yellow-400 px-3 py-2 text-center text-sm font-bold text-black" role="status">
+                🪙 {t('res.taka')}: +{fmtNum(payout.earned, lang)} · {t('res.takaTotal')}: {fmtNum(payout.total, lang)}
+                {payout.missions.length > 0 && ` · ✅ ${t('res.missionsDone')} ${fmtNum(payout.missions.length, lang)}`}
+              </p>
+            )}
 
             {newBadges.length > 0 && (
               <div className="mt-3 rounded-lg border border-leaf/50 bg-leaf/10 p-3" role="status">

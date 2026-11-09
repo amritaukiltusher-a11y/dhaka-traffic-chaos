@@ -60,3 +60,11 @@ recent Windows/macOS); otherwise you still get the cartoon sound and the text bu
 - **Badges:** nine local achievements (`src/game/achievements.ts`), stored in the browser only.
 - **Share:** the results screen has a share button (Web Share API, or copies the text).
 - **Haptics:** phones vibrate on crashes (when sound is on).
+
+## Garage, taka, missions, gamepad & music
+
+- Collect 🪙 coins in the lanes; at game over you earn taka (coins + score/250 + mission rewards), saved in `localStorage` (`dtc:wallet`).
+- **Garage** (`#garage`): upgrade battery, coin magnet, shield and chai (3 levels each) and buy paint colours.
+- **Daily missions**: three new missions each day (seeded by date), completed within a single run.
+- **Gamepad**: stick/d-pad steer, A/RT accelerate, B/LT brake, X boost, Y shield, LB horn, RB sound bomb, Start pause.
+- **Music**: 🎵 toggle in the toolbar (off by default), procedural dhol-style tune.
