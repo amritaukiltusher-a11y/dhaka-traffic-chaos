@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { InputState } from './input';
+import { Fx } from './fx';
 import type { SoundEngine } from './audio';
 import type { Difficulty, Quality } from '../lib/storage';
 
@@ -604,6 +605,15 @@ export class DriveGame {
   private hornCd = 0;
   private boosting = false;
   private shake = 0;
+  private fx!: Fx;
+  private throttleOn = false;
+  private brakeOn = false;
+  private pitch = 0;
+  private camRoll = 0;
+  private fovKick = 0;
+  private fxT = 0;
+  private baseFov = 58;
+  private blob!: THREE.Mesh;
   private spawnT = 0;
   private pickupT = 5;
   private loadout: Loadout = { battery: 0, magnet: 0, shield: 0, chai: 0, paint: 0x237d33 };
@@ -642,7 +652,7 @@ export class DriveGame {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.applyQuality();
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     canvas.addEventListener('webglcontextlost', this.onContextLost as EventListener);
 
     const sky = 0x0d1226;
@@ -653,7 +663,14 @@ export class DriveGame {
     this.scene.add(this.hemi);
     this.sunLight = new THREE.DirectionalLight(0xffd9a0, 0.9);
     this.sunLight.position.set(-20, 40, 30);
-    this.scene.add(this.sunLight);
+    this.sunLight.shadow.mapSize.set(1024, 1024);
+    const sc = this.sunLight.shadow.camera;
+    sc.left = -16; sc.right = 16; sc.top = 30; sc.bottom = -45; sc.near = 5; sc.far = 120;
+    this.sunLight.shadow.bias = -0.0008;
+    this.sunLight.shadow.normalBias = 0.03;
+    this.sunLight.target.position.set(0, 0, -8);
+    this.scene.add(this.sunLight, this.sunLight.target);
+    this.fx = new Fx(this.scene);
 
     this.headLight = new THREE.PointLight(0xfff0c0, 26, 26, 1.6);
     this.scene.add(this.headLight);
@@ -665,6 +682,7 @@ export class DriveGame {
     const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_W, 520), roadMat);
     road.rotation.x = -Math.PI / 2;
     road.position.set(0, 0, -200);
+    road.receiveShadow = true;
     this.scene.add(road);
     this.f.keep('road', roadMat);
 
@@ -695,6 +713,16 @@ export class DriveGame {
     this.bodyMat = r.bodyMat;
     this.playerWheels = r.wheels;
     this.scene.add(this.player);
+    this.player.traverse((o) => ((o as THREE.Mesh).isMesh ? ((o as THREE.Mesh).castShadow = true) : undefined));
+    this.blob = new THREE.Mesh(
+      new THREE.CircleGeometry(1.7, 20),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false })
+    );
+    this.blob.rotation.x = -Math.PI / 2;
+    this.blob.scale.set(0.75, 1.25, 1);
+    this.blob.position.y = 0.03;
+    this.scene.add(this.blob);
+    this.applyQuality();
 
     this.shieldMesh = new THREE.Mesh(new THREE.SphereGeometry(2.1, 18, 12), new THREE.MeshBasicMaterial({ color: 0x4de1ff, transparent: true, opacity: 0.22, depthWrite: false }));
     this.shieldMesh.position.y = 1.1;
@@ -779,6 +807,7 @@ export class DriveGame {
     this.f.dispose();
     this.textures.forEach((t) => t.dispose());
     this.roadTex.dispose();
+    this.fx.dispose();
     this.renderer.dispose();
   }
 
@@ -791,7 +820,19 @@ export class DriveGame {
 
   private applyQuality() {
     const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    this.renderer.setPixelRatio(this.quality === 'high' ? Math.min(dpr, 1.75) : 1);
+    const hi = this.quality === 'high';
+    this.renderer.setPixelRatio(hi ? Math.min(dpr, 1.75) : 1);
+    if (this.renderer.shadowMap.enabled !== hi) {
+      this.renderer.shadowMap.enabled = hi;
+      this.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(m)) m.forEach((x) => (x.needsUpdate = true));
+        else if (m) m.needsUpdate = true;
+      });
+    }
+    this.sunLight.castShadow = hi;
+    if (this.blob) this.blob.visible = !hi;
+    if (this.fx) this.fx.enabled = true;
   }
 
   private resize() {
@@ -800,7 +841,8 @@ export class DriveGame {
     const h = Math.max(1, host.clientHeight);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    this.camera.fov = this.camera.aspect < 1 ? 78 : this.camera.aspect < 1.5 ? 66 : 58;
+    this.baseFov = this.camera.aspect < 1 ? 78 : this.camera.aspect < 1.5 ? 66 : 58;
+    this.camera.fov = this.baseFov;
     this.camera.updateProjectionMatrix();
   }
 
@@ -1261,6 +1303,7 @@ export class DriveGame {
       b.grp.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
     }
     b.grp.position.set(e.x, kind === 'pedestrian' ? 0.02 : 0, z);
+    if (e.isVehicle) b.grp.traverse((o) => ((o as THREE.Mesh).isMesh ? ((o as THREE.Mesh).castShadow = true) : undefined));
     this.scene.add(b.grp);
     return e;
   }
@@ -1428,6 +1471,8 @@ export class DriveGame {
     const max = maxBase * (this.boosting ? 1.45 : 1);
     const throttle = inp.accel || (this.chai > 0 && !inp.brake);
     const wet = this.weather === 'rain';
+    this.throttleOn = !!throttle;
+    this.brakeOn = !!inp.brake;
     if (throttle) this.speed += (this.boosting ? 16 : 9) * dt;
     else if (inp.brake) this.speed -= (wet ? 18 : 24) * dt;
     else this.speed -= 3.2 * dt;
@@ -1624,11 +1669,13 @@ export class DriveGame {
         this.bonus += 120;
         this.emit('pickup');
         this.audio.pickup();
+        this.fx.sparkle(e.obj.position.x, 1.2, e.obj.position.z, 0x4dff9a);
         return true;
       case 'coin':
         this.coins++;
         this.bonus += 10;
         this.audio.coin(this.coins % 5);
+        this.fx.sparkle(e.obj.position.x, 1.2, e.obj.position.z, 0xffd23a);
         return true;
       case 'chai':
         this.chai = CHAI_SECONDS + 1.5 * this.loadout.chai;
@@ -1637,6 +1684,7 @@ export class DriveGame {
         this.battery = Math.min(100, this.battery + 8);
         this.emit('chai');
         this.audio.chai();
+        this.fx.sparkle(e.obj.position.x, 1.2, e.obj.position.z, 0xff9a4a);
         return true;
       case 'pothole':
         if (this.shield > 0) return false;
@@ -1686,6 +1734,8 @@ export class DriveGame {
     if (e.speed > 0) e.speed = Math.max(2, e.speed * 0.7);
     this.emit('crash');
     this.audio.crash();
+    this.fx.crash((this.px + e.x) / 2, e.obj.position.z + (e.obj.position.z > -2 ? 0 : 1.5));
+    this.fovKick = -6;
     if (this.battery <= 0) {
       this.battery = 0;
       this.finish('battery');
@@ -1753,22 +1803,59 @@ export class DriveGame {
     const t = performance.now() / 1000;
     const running = this.mode === 'demo' || this.mode === 'playing';
 
-    // player
+    // player: body roll, yaw, pitch on throttle/brake, suspension bounce
+    const speedK = Math.min(1, this.speed / 30);
+    const pitchTarget = running ? (this.brakeOn ? -0.045 : this.throttleOn ? 0.03 * (this.boosting ? 1.6 : 1) : 0) : 0;
+    this.pitch += (pitchTarget - this.pitch) * Math.min(1, 6 * dt);
     this.player.position.x = this.px;
-    this.player.rotation.z = -this.vx * 0.025;
-    this.player.rotation.y = -this.vx * 0.02;
-    this.player.position.y = running ? Math.sin(t * 22) * 0.012 * (this.speed / 20) : 0;
+    this.player.rotation.z += (-this.vx * 0.032 - this.player.rotation.z) * Math.min(1, 9 * dt);
+    this.player.rotation.y = -this.vx * 0.022;
+    this.player.rotation.x = this.pitch + (running ? Math.sin(t * 17) * 0.006 * speedK : 0);
+    this.player.position.y = running ? Math.abs(Math.sin(t * 19)) * 0.03 * speedK : 0;
     this.player.visible = this.invuln > 0 ? Math.floor(t * 14) % 2 === 0 : true;
     if (running) for (const w of this.playerWheels) w.rotation.x -= this.speed * dt * 3.2;
     this.shieldMesh.visible = this.shield > 0;
+    if (this.shieldMesh.visible) {
+      this.shieldMesh.rotation.y += dt * 1.5;
+      this.shieldMesh.scale.setScalar(1 + Math.sin(t * 6) * 0.03);
+    }
     this.headLight.position.set(this.px, 2.2, -5);
+    this.blob.position.x = this.px;
+    this.sunLight.target.position.x = this.px;
 
-    // camera
+    // particles: exhaust, boost flame, wheel dust
+    this.fxT -= dt;
+    if (running && this.fxT <= 0) {
+      this.fxT = this.boosting ? 0.03 : 0.07;
+      const rx = this.px + (Math.random() - 0.5) * 0.3;
+      if (this.boosting) {
+        this.fx.emit({ x: rx, y: 0.8, z: 1.7, vz: 2, vy: 0.4, life: 0.35, size: 0.5, grow: -0.3, color: Math.random() < 0.5 ? 0xff7a2a : 0xffc24a, alpha: 0.9, additive: true, ground: false });
+      } else if (this.throttleOn) {
+        this.fx.emit({ x: rx, y: 0.55, z: 1.7, vy: 0.5, life: 0.7, size: 0.25, grow: 0.9, color: 0x8a8a90, alpha: 0.3 });
+      }
+      if (this.speed > 14) {
+        for (const sx of [-0.85, 0.85]) {
+          this.fx.emit({ x: this.px + sx, y: 0.12, z: 1.2, vx: sx * 0.8, vy: 0.5, life: 0.5, size: 0.3, grow: 0.9, color: this.weather === 'rain' ? 0x7aa0c8 : 0xb8ad98, alpha: this.weather === 'rain' ? 0.35 : 0.25 });
+        }
+      }
+    }
+    this.fx.update(dt, running ? this.speed : 0, this.boosting, running);
+
+    // camera: smooth follow, speed FOV, lean into turns, crash kick
     this.camX += (this.px * 0.55 - this.camX) * Math.min(1, 4 * dt);
+    this.fovKick += (0 - this.fovKick) * Math.min(1, 3 * dt);
+    const fovTarget = this.baseFov + (running ? speedK * 5 + (this.boosting ? 7 : 0) : 0) + this.fovKick;
+    if (Math.abs(this.camera.fov - fovTarget) > 0.02) {
+      this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, 5 * dt);
+      this.camera.updateProjectionMatrix();
+    }
     const sh = running ? this.shake * 0.35 : 0;
     const boostPull = this.boosting ? 0.6 : 0;
-    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, 5.8 + (Math.random() - 0.5) * sh, 11.5 + boostPull);
-    this.camera.lookAt(this.camX * 0.5, 1.0, -16);
+    const camY = 5.8 - speedK * 0.5 + (this.boosting ? -0.3 : 0);
+    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, camY + (Math.random() - 0.5) * sh, 11.5 + boostPull - speedK * 0.4);
+    this.camera.lookAt(this.camX * 0.5 + this.vx * 0.12, 1.0, -16);
+    this.camRoll += (-this.vx * 0.006 - this.camRoll) * Math.min(1, 5 * dt);
+    this.camera.rotateZ(this.camRoll);
 
     // chaser
     const showChaser = this.mode !== 'demo' && this.gap < 22;

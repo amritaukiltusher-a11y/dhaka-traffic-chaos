@@ -68,3 +68,7 @@ recent Windows/macOS); otherwise you still get the cartoon sound and the text bu
 - **Daily missions**: three new missions each day (seeded by date), completed within a single run.
 - **Gamepad**: stick/d-pad steer, A/RT accelerate, B/LT brake, X boost, Y shield, LB horn, RB sound bomb, Start pause.
 - **Music**: 🎵 toggle in the toolbar (off by default), procedural dhol-style tune.
+
+## 3D visuals
+
+- Real-time sun shadows on **High** quality (cheap blob shadow on Low), soft particles (exhaust, boost flame, wheel dust, crash sparks, pickup sparkles), speed streaks, speed-based FOV, camera roll into turns, crash kick, body roll/pitch and suspension bounce on the auto. Code: `src/game/fx.ts`.
