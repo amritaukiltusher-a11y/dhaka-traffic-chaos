@@ -265,6 +265,33 @@ class Factory {
     this.mats.clear();
   }
 
+  private glowTex?: THREE.CanvasTexture;
+  /** additive soft light sprite (fake bloom) for lamps and tail lights */
+  glow(color: number, size: number) {
+    if (!this.glowTex) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const g = c.getContext('2d');
+      if (g) {
+        const grd = g.createRadialGradient(32, 32, 1, 32, 32, 31);
+        grd.addColorStop(0, 'rgba(255,255,255,1)');
+        grd.addColorStop(0.3, 'rgba(255,255,255,0.45)');
+        grd.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grd;
+        g.fillRect(0, 0, 64, 64);
+      }
+      this.glowTex = new THREE.CanvasTexture(c);
+      this.textures.push(this.glowTex);
+    }
+    const key = `glow-${color}`;
+    const mat =
+      (this.mats.get(key) as THREE.SpriteMaterial | undefined) ??
+      this.keep(key, new THREE.SpriteMaterial({ map: this.glowTex, color, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending }));
+    const sp = new THREE.Sprite(mat);
+    sp.scale.setScalar(size);
+    return sp;
+  }
+
   private add(grp: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number) {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
@@ -295,6 +322,11 @@ class Factory {
   private tailLights(grp: THREE.Object3D, halfW: number, y: number, z: number) {
     this.add(grp, this.g(0.22, 0.12, 0.05), this.basic(0xff2b2b), -halfW, y, z);
     this.add(grp, this.g(0.22, 0.12, 0.05), this.basic(0xff2b2b), halfW, y, z);
+    for (const sx of [-halfW, halfW]) {
+      const gl = this.glow(0xff2b2b, 1.1);
+      gl.position.set(sx, y, z + 0.1);
+      grp.add(gl);
+    }
   }
 
   /** Drawn sign faces for the player's auto: roof sign, canopy flap and number plate. */
@@ -659,6 +691,7 @@ export class DriveGame {
   private beam!: THREE.Mesh;
   private zone = 0;
   private timeScale = 1;
+  private hornT = 4;
   private hitRoll = 0;
   private intro = 0;
   private walkers: { limbs: THREE.Object3D[]; phase: number }[] = [];
@@ -1200,7 +1233,9 @@ export class DriveGame {
         const poolMesh = new THREE.Mesh(f.plane(9, 9), poolMat);
         poolMesh.rotation.x = -Math.PI / 2;
         poolMesh.position.set(s * 3.2, 0.06, 0);
-        lg.add(pole, arm, bulb, poolMesh);
+        const halo = f.glow(0xffc98a, 3.2);
+        halo.position.copy(bulb.position);
+        lg.add(pole, arm, bulb, poolMesh, halo);
         grp.add(lg);
         lamps.push(lg);
       }
@@ -1571,6 +1606,13 @@ export class DriveGame {
     const boostEdge = inp.boost && !this.prev.boost;
     this.prev = { horn: inp.horn, special: inp.special, boost: inp.boost };
 
+    if (!demo) {
+      this.hornT -= dt;
+      if (this.hornT <= 0) {
+        this.hornT = 5 + Math.random() * 7;
+        this.audio.distantHorn();
+      }
+    }
     this.time += dt;
     const newLevel = Math.min(10, 1 + Math.floor(this.time / 18));
     if (newLevel > this.level && !demo) {
@@ -1971,6 +2013,13 @@ export class DriveGame {
           this.fx.emit({ x: this.px + sx, y: 0.12, z: 1.2, vx: sx * 0.8, vy: 0.5, life: 0.5, size: 0.3, grow: 0.9, color: this.weather === 'rain' ? 0x7aa0c8 : 0xb8ad98, alpha: this.weather === 'rain' ? 0.35 : 0.25 });
         }
       }
+    }
+    if (running && this.weather === 'rain' && Math.random() < dt * 22) {
+      this.fx.emit({ x: this.px + (Math.random() - 0.5) * 14, y: 0.08, z: -Math.random() * 28, vy: 1.4, life: 0.35, size: 0.18, grow: 0.5, gravity: 7, color: 0xcfe0ff, alpha: 0.5 });
+    }
+    if (this.mode === 'playing' && this.battery < 25 && Math.random() < dt * (this.battery < 10 ? 14 : 7)) {
+      this.fx.emit({ x: this.px + (Math.random() - 0.5) * 0.5, y: 1.0, z: -1.5, vy: 1.2, life: 0.9, size: 0.35, grow: 1.3, color: 0x303036, alpha: 0.5, ground: true });
+      if (this.battery < 10 && Math.random() < 0.3) this.fx.emit({ x: this.px, y: 1.0, z: -1.4, vx: (Math.random() - 0.5) * 3, vy: 2, life: 0.35, size: 0.16, grow: 0.2, gravity: 10, color: 0x6ad8ff, alpha: 1, additive: true, ground: false });
     }
     this.fx.update(dt, running ? this.speed : 0, this.boosting, running);
 

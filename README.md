@@ -80,3 +80,7 @@ Every 2 levels the route enters a new part of Dhaka (Mirpur → Farmgate → Mot
 ## Motion
 
 Traffic wheels spin, vehicles sway and lean into lane changes, pedestrians walk, cycle-rickshaw pullers pedal, crows fly at dusk, the run starts with a camera swoop, crashes trigger slow-motion plus a body-roll kick, near-misses pulse the FOV.
+
+## Atmosphere
+
+Glowing street lamps and tail lights, rain splashes on the road, smoke and sparks when the battery is low, distant horns from other drivers.

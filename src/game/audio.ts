@@ -205,6 +205,13 @@ export class SoundEngine {
     this.tone(494, 0.32, 'square', 0.06);
   }
 
+  /** a far-away honk from other drivers, quiet background texture */
+  distantHorn() {
+    const f = [300, 340, 380, 420][Math.floor(Math.random() * 4)];
+    const n = Math.random() < 0.4 ? 2 : 1;
+    for (let i = 0; i < n; i++) this.tone(f, 0.18, 'square', 0.022, f * 0.97, i * 0.26);
+  }
+
   crash() {
     if (!this.ready() || !this.ctx || !this.master || !this.noiseBuf) return;
     const src = this.ctx.createBufferSource();
