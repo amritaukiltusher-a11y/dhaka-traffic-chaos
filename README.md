@@ -76,3 +76,7 @@ recent Windows/macOS); otherwise you still get the cartoon sound and the text bu
 ## Areas
 
 Every 2 levels the route enters a new part of Dhaka (Mirpur → Farmgate → Motijheel → Gulshan → Banani) with a tinted sky, a toast and a HUD label. Also: speed vignette, headlight pool, twinkling stars.
+
+## Motion
+
+Traffic wheels spin, vehicles sway and lean into lane changes, pedestrians walk, cycle-rickshaw pullers pedal, crows fly at dusk, the run starts with a camera swoop, crashes trigger slow-motion plus a body-roll kick, near-misses pulse the FOV.

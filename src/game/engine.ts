@@ -120,6 +120,10 @@ interface Entity {
   prevZ: number;
   isVehicle: boolean;
   spin?: THREE.Object3D;
+  wheels?: THREE.Object3D[];
+  limbs?: THREE.Object3D[];
+  phase: number;
+  wheelR: number;
 }
 
 const CRASH_BATTERY: Partial<Record<Kind, number>> = { bus: 10, truck: 10, car: 7, cng: 6, bike: 4, rickshaw: 4, barrier: 6, stall: 5 };
@@ -276,6 +280,18 @@ class Factory {
     return holder;
   }
 
+  private wheelSet(grp: THREE.Object3D, r: number, w: number, xs: number[], zs: number[]) {
+    const out: THREE.Object3D[] = [];
+    for (const x of xs)
+      for (const z of zs) {
+        const wh = this.wheel(r, w);
+        wh.position.set(x, r, z);
+        grp.add(wh);
+        out.push(wh);
+      }
+    return out;
+  }
+
   private tailLights(grp: THREE.Object3D, halfW: number, y: number, z: number) {
     this.add(grp, this.g(0.22, 0.12, 0.05), this.basic(0xff2b2b), -halfW, y, z);
     this.add(grp, this.g(0.22, 0.12, 0.05), this.basic(0xff2b2b), halfW, y, z);
@@ -392,7 +408,8 @@ class Factory {
     this.add(grp, this.g(1.8, 0.55, 4.2), this.lam(color), 0, 0.72, 0);
     this.add(grp, this.g(1.5, 0.5, 2.2), this.lam(0x1b2733), 0, 1.22, 0.25);
     this.tailLights(grp, 0.65, 0.8, 2.12);
-    return { grp, hw: 0.95, hl: 2.1 };
+    const wheels = this.wheelSet(grp, 0.33, 0.22, [-0.92, 0.92], [-1.3, 1.3]);
+    return { grp, hw: 0.95, hl: 2.1, wheels, wheelR: 0.33 };
   }
 
   bus() {
@@ -403,7 +420,8 @@ class Factory {
     this.add(grp, this.g(2.54, 0.35, 9.02), this.lam(0xf2efe6), 0, 1.15, 0);
     this.add(grp, this.g(2.0, 0.25, 4), this.lam(0x30343c), 0, 3.35, 0.5);
     this.tailLights(grp, 1.0, 0.9, 4.52);
-    return { grp, hw: 1.25, hl: 4.5 };
+    const wheels = this.wheelSet(grp, 0.5, 0.3, [-1.2, 1.2], [-3, 3]);
+    return { grp, hw: 1.25, hl: 4.5, wheels, wheelR: 0.5 };
   }
 
   truck() {
@@ -413,7 +431,8 @@ class Factory {
     this.add(grp, this.g(2.5, 2.8, 5.8), this.lam(color), 0, 1.8, 0.9);
     this.add(grp, this.g(2.3, 0.3, 8), this.lam(0x16171b), 0, 0.5, 0);
     this.tailLights(grp, 0.95, 0.75, 3.82);
-    return { grp, hw: 1.25, hl: 4 };
+    const wheels = this.wheelSet(grp, 0.5, 0.3, [-1.15, 1.15], [-3, 0.2, 3]);
+    return { grp, hw: 1.25, hl: 4, wheels, wheelR: 0.5 };
   }
 
   cng() {
@@ -422,7 +441,8 @@ class Factory {
     this.add(grp, this.g(1.4, 0.95, 2.4), this.lam(0x1f9d58), 0, 1.15, 0);
     this.add(grp, this.g(1.45, 0.08, 1.6), this.lam(0x16603a), 0, 1.7, 0.3);
     this.tailLights(grp, 0.5, 0.8, 1.22);
-    return { grp, hw: 0.75, hl: 1.25 };
+    const wheels = this.wheelSet(grp, 0.3, 0.2, [-0.72, 0.72], [0.7]).concat(this.wheelSet(grp, 0.3, 0.2, [0], [-0.95]));
+    return { grp, hw: 0.75, hl: 1.25, wheels, wheelR: 0.3 };
   }
 
   bike() {
@@ -431,7 +451,8 @@ class Factory {
     this.add(grp, this.g(0.38, 0.6, 0.32), this.lam(pick([0xd04040, 0x3a6ed0, 0xe0a020, 0x40a060])), 0, 1.05, 0.1);
     this.add(grp, this.sph(0.19), this.lam(0x222222), 0, 1.5, 0.1);
     this.add(grp, this.g(0.2, 0.1, 0.05), this.basic(0xff2b2b), 0, 0.7, 0.78);
-    return { grp, hw: 0.4, hl: 0.8 };
+    const wheels = this.wheelSet(grp, 0.34, 0.12, [0], [-0.6, 0.6]);
+    return { grp, hw: 0.4, hl: 0.8, wheels, wheelR: 0.34 };
   }
 
   cycleRickshaw() {
@@ -443,7 +464,8 @@ class Factory {
     this.add(grp, this.g(0.3, 0.5, 0.25), this.lam(0x55708a), 0, 1.2, -0.55);
     this.add(grp, this.sph(0.15), this.lam(0xd8a77a), 0, 1.6, -0.55);
     this.add(grp, this.g(0.18, 0.1, 0.05), this.basic(0xff2b2b), 0, 0.8, 1.02);
-    return { grp, hw: 0.55, hl: 1.2 };
+    const wheels = this.wheelSet(grp, 0.36, 0.08, [-0.45, 0.45], [0.5]).concat(this.wheelSet(grp, 0.36, 0.08, [0], [-0.8]));
+    return { grp, hw: 0.55, hl: 1.2, wheels, wheelR: 0.36, limbs: [grp.children[4], grp.children[5]] };
   }
 
   barrier() {
@@ -473,10 +495,25 @@ class Factory {
 
   pedestrian() {
     const grp = new THREE.Group();
-    this.add(grp, this.cyl(0.18, 0.22, 0.95, 8), this.lam(pick([0xe05a5a, 0x4a7ad0, 0xf0c040, 0x5ab07a, 0xf2f2f2])), 0, 0.7, 0);
-    this.add(grp, this.sph(0.17), this.lam(pick([0xd8a77a, 0xb98058, 0x8a5a3a])), 0, 1.4, 0);
-    this.add(grp, this.cyl(0.14, 0.14, 0.4, 6), this.lam(0x222a38), 0, 0.2, 0);
-    return { grp, hw: 0.32, hl: 0.32 };
+    const shirt = this.lam(pick([0xe05a5a, 0x4a7ad0, 0xf0c040, 0x5ab07a, 0xf2f2f2]));
+    this.add(grp, this.cyl(0.18, 0.22, 0.7, 8), shirt, 0, 1.0, 0);
+    this.add(grp, this.sph(0.17), this.lam(pick([0xd8a77a, 0xb98058, 0x8a5a3a])), 0, 1.54, 0);
+    const limbs: THREE.Object3D[] = [];
+    for (const x of [-0.09, 0.09]) {
+      const leg = new THREE.Group();
+      leg.position.set(x, 0.62, 0);
+      this.add(leg, this.cyl(0.075, 0.07, 0.6, 6), this.lam(0x222a38), 0, -0.3, 0);
+      grp.add(leg);
+      limbs.push(leg);
+    }
+    for (const x of [-0.25, 0.25]) {
+      const arm = new THREE.Group();
+      arm.position.set(x, 1.3, 0);
+      this.add(arm, this.cyl(0.05, 0.05, 0.5, 6), shirt, 0, -0.25, 0);
+      grp.add(arm);
+      limbs.push(arm);
+    }
+    return { grp, hw: 0.32, hl: 0.32, limbs };
   }
 
   pickup() {
@@ -621,6 +658,11 @@ export class DriveGame {
   private blob!: THREE.Mesh;
   private beam!: THREE.Mesh;
   private zone = 0;
+  private timeScale = 1;
+  private hitRoll = 0;
+  private intro = 0;
+  private walkers: { limbs: THREE.Object3D[]; phase: number }[] = [];
+  private birds: { grp: THREE.Group; w1: THREE.Object3D; w2: THREE.Object3D; phase: number; vx: number }[] = [];
   private spawnT = 0;
   private pickupT = 5;
   private loadout: Loadout = { battery: 0, magnet: 0, shield: 0, chai: 0, paint: 0x237d33 };
@@ -702,6 +744,7 @@ export class DriveGame {
 
     this.addSky();
     this.buildRain();
+    this.buildBirds();
 
     // traffic light lamp materials (shared by every gantry)
     this.lampMats = {
@@ -804,6 +847,7 @@ export class DriveGame {
   startRun() {
     this.resetWorld(false);
     this.mode = 'playing';
+    this.intro = 1;
     this.audio.startEngine();
     this.audio.setRain(this.weather === 'rain');
     this.emitHud();
@@ -949,6 +993,30 @@ export class DriveGame {
   }
 
   /* ---------------------------------------------------------------- weather */
+
+  private buildBirds() {
+    const mat = new THREE.MeshBasicMaterial({ color: 0x14141a, side: THREE.DoubleSide, fog: false });
+    this.f.keep('bird', mat);
+    const wing = this.f.g(1.1, 0.04, 0.4);
+    for (let i = 0; i < 7; i++) {
+      const grp = new THREE.Group();
+      const mk = (s: number) => {
+        const pivot = new THREE.Group();
+        const m = new THREE.Mesh(wing, mat);
+        m.position.x = s * 0.55;
+        pivot.add(m);
+        grp.add(pivot);
+        return pivot;
+      };
+      const w1 = mk(-1);
+      const w2 = mk(1);
+      grp.add(new THREE.Mesh(this.f.g(0.25, 0.2, 0.6), mat));
+      grp.position.set(-60 + Math.random() * 120, 14 + Math.random() * 8, -70 - Math.random() * 40);
+      grp.visible = false;
+      this.scene.add(grp);
+      this.birds.push({ grp, w1, w2, phase: Math.random() * 6.28, vx: 5 + Math.random() * 3 });
+    }
+  }
 
   private buildRain() {
     for (let i = 0; i < RAIN_DROPS; i++) this.resetDrop(i, true);
@@ -1168,7 +1236,9 @@ export class DriveGame {
       // decorative pedestrians on the footpath
       for (const s of [-1, 1]) {
         if (Math.random() < 0.6) {
-          const p = f.pedestrian().grp;
+          const pd = f.pedestrian();
+          const p = pd.grp;
+          this.walkers.push({ limbs: pd.limbs, phase: Math.random() * 6.28 });
           p.position.set(s * rand(7.2, 9), 0.22, rand(-10, 10));
           grp.add(p);
         }
@@ -1276,7 +1346,7 @@ export class DriveGame {
 
   private makeEntity(kind: Kind, lane: number, z: number): Entity | null {
     const lx = LANES[lane];
-    let b: { grp: THREE.Group; hw: number; hl: number; core?: THREE.Group };
+    let b: { grp: THREE.Group; hw: number; hl: number; core?: THREE.Group; wheels?: THREE.Object3D[]; wheelR?: number; limbs?: THREE.Object3D[] };
     let speed = 0;
     switch (kind) {
       case 'car':
@@ -1339,7 +1409,11 @@ export class DriveGame {
       near: false,
       prevZ: z,
       isVehicle: ['car', 'bus', 'truck', 'cng', 'bike', 'rickshaw'].includes(kind),
-      spin: b.core
+      spin: b.core,
+      wheels: b.wheels,
+      limbs: b.limbs,
+      phase: Math.random() * 6.28,
+      wheelR: b.wheelR ?? 0.4
     };
     if (kind === 'pedestrian') {
       const side = Math.random() < 0.5 ? -1 : 1;
@@ -1457,7 +1531,8 @@ export class DriveGame {
     }
     const dt = Math.min(0.05, Math.max(0, (t - this.lastT) / 1000));
     this.lastT = t;
-    if (this.mode === 'demo' || this.mode === 'playing') this.step(dt);
+    this.timeScale += (1 - this.timeScale) * Math.min(1, 3.5 * dt);
+    if (this.mode === 'demo' || this.mode === 'playing') this.step(dt * this.timeScale);
     this.updateVisuals(dt);
     this.renderer.render(this.scene, this.camera);
   };
@@ -1654,6 +1729,7 @@ export class DriveGame {
           const bonus = Math.round((30 + this.speed) * Math.min(5, this.combo));
           this.bonus += bonus;
           this.emit('nearMiss', bonus, this.combo);
+          this.fovKick = Math.max(this.fovKick, 3);
           this.audio.nearMiss();
         }
       }
@@ -1786,6 +1862,8 @@ export class DriveGame {
     this.audio.crash();
     this.fx.crash((this.px + e.x) / 2, e.obj.position.z + (e.obj.position.z > -2 ? 0 : 1.5));
     this.fovKick = -6;
+    this.timeScale = 0.35;
+    this.hitRoll = (e.x >= this.px ? -1 : 1) * 0.32;
     if (this.battery <= 0) {
       this.battery = 0;
       this.finish('battery');
@@ -1859,7 +1937,8 @@ export class DriveGame {
     const pitchTarget = running ? (this.brakeOn ? -0.045 : this.throttleOn ? 0.03 * (this.boosting ? 1.6 : 1) : 0) : 0;
     this.pitch += (pitchTarget - this.pitch) * Math.min(1, 6 * dt);
     this.player.position.x = this.px;
-    this.player.rotation.z += (-this.vx * 0.032 - this.player.rotation.z) * Math.min(1, 9 * dt);
+    this.hitRoll += (0 - this.hitRoll) * Math.min(1, 4 * dt);
+    this.player.rotation.z += (-this.vx * 0.032 + this.hitRoll - this.player.rotation.z) * Math.min(1, 9 * dt);
     this.player.rotation.y = -this.vx * 0.022;
     this.player.rotation.x = this.pitch + (running ? Math.sin(t * 17) * 0.006 * speedK : 0);
     this.player.position.y = running ? Math.abs(Math.sin(t * 19)) * 0.03 * speedK : 0;
@@ -1903,13 +1982,63 @@ export class DriveGame {
       this.camera.fov += (fovTarget - this.camera.fov) * Math.min(1, 5 * dt);
       this.camera.updateProjectionMatrix();
     }
+    this.intro = Math.max(0, this.intro - dt / 1.6);
+    const ik = this.intro * this.intro;
     const sh = running ? this.shake * 0.35 : 0;
     const boostPull = this.boosting ? 0.6 : 0;
     const camY = 5.8 - speedK * 0.5 + (this.boosting ? -0.3 : 0);
-    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, camY + (Math.random() - 0.5) * sh, 11.5 + boostPull - speedK * 0.4);
+    this.camera.position.set(this.camX + (Math.random() - 0.5) * sh, camY + ik * 7 + (Math.random() - 0.5) * sh, 11.5 + boostPull - speedK * 0.4 + ik * 9);
     this.camera.lookAt(this.camX * 0.5 + this.vx * 0.12, 1.0, -16);
     this.camRoll += (-this.vx * 0.006 - this.camRoll) * Math.min(1, 5 * dt);
     this.camera.rotateZ(this.camRoll);
+
+    // traffic: spinning wheels, suspension sway, lane-change lean, walking pedestrians, pedalling pullers
+    for (const e of this.ents) {
+      const o = e.obj;
+      if (e.wheels) {
+        const spin = (e.speed / e.wheelR) * dt;
+        for (const w of e.wheels) w.rotation.x -= spin;
+      }
+      if (e.isVehicle) {
+        const lean = e.targetX !== undefined ? Math.sign(e.targetX - e.x) * -0.05 : 0;
+        o.rotation.z += (lean + Math.sin(t * 5 + e.phase) * 0.006 - o.rotation.z) * Math.min(1, 6 * dt);
+        o.rotation.y += ((e.targetX !== undefined ? Math.sign(e.targetX - e.x) * -0.12 : 0) - o.rotation.y) * Math.min(1, 6 * dt);
+        o.position.y = Math.abs(Math.sin(t * 9 + e.phase)) * 0.015;
+      }
+      if (e.kind === 'rickshaw' && e.limbs) {
+        const bob = Math.sin(t * 7 + e.phase);
+        e.limbs[0].position.y = 1.2 + bob * 0.04;
+        e.limbs[0].rotation.x = bob * 0.12;
+        e.limbs[1].position.y = 1.6 + bob * 0.05;
+      }
+      if (e.kind === 'pedestrian' && e.limbs) {
+        const sw = Math.sin(t * 9 + e.phase) * 0.7;
+        e.limbs[0].rotation.x = sw;
+        e.limbs[1].rotation.x = -sw;
+        e.limbs[2].rotation.x = -sw;
+        e.limbs[3].rotation.x = sw;
+      }
+    }
+    for (const w of this.walkers) {
+      const sw = Math.sin(t * 5 + w.phase) * 0.5;
+      w.limbs[0].rotation.x = sw;
+      w.limbs[1].rotation.x = -sw;
+      w.limbs[2].rotation.x = -sw * 0.8;
+      w.limbs[3].rotation.x = sw * 0.8;
+    }
+
+    // crows over the rooftops (daylight only: they would be invisible against the night sky)
+    for (const b of this.birds) {
+      b.grp.visible = this.weather === 'dusk';
+      if (!b.grp.visible) continue;
+      b.grp.position.x += b.vx * dt;
+      b.grp.position.y += Math.sin(t * 1.3 + b.phase) * 0.4 * dt;
+      if (b.grp.position.x > 70) b.grp.position.x = -70;
+      const flap = Math.sin(t * 9 + b.phase) * 0.7;
+      b.w1.rotation.z = flap;
+      b.w2.rotation.z = -flap;
+      b.grp.rotation.y = -Math.PI / 2;
+    }
 
     // chaser
     const showChaser = this.mode !== 'demo' && this.gap < 22;
