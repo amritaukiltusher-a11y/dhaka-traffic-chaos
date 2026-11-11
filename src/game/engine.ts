@@ -551,12 +551,12 @@ class Factory {
   pickup() {
     const grp = new THREE.Group();
     const core = new THREE.Group();
-    this.add(core, this.sph(0.5, 10, 8), this.glass(0xffe14d, 0.85), 0, 0, 0);
-    this.add(core, this.g(0.16, 0.7, 0.16), this.basic(0xfff7b0), 0, 0, 0);
-    this.add(core, this.g(0.5, 0.14, 0.14), this.basic(0xfff7b0), 0, 0.12, 0);
+    this.add(core, this.sph(0.5, 10, 8), this.glass(0x2f8cff, 0.85), 0, 0, 0);
+    this.add(core, this.g(0.16, 0.7, 0.16), this.basic(0xcfeaff), 0, 0, 0);
+    this.add(core, this.g(0.5, 0.14, 0.14), this.basic(0xcfeaff), 0, 0.12, 0);
     core.position.y = 1.2;
     grp.add(core);
-    this.add(grp, this.cyl(0.8, 0.8, 0.02, 20), this.glass(0x3dff88, 0.35), 0, 0.03, 0);
+    this.add(grp, this.cyl(0.8, 0.8, 0.02, 20), this.glass(0x38c8ff, 0.35), 0, 0.03, 0);
     return { grp, core, hw: 0.8, hl: 0.8 };
   }
 
@@ -1837,7 +1837,7 @@ export class DriveGame {
         this.bonus += 120;
         this.emit('pickup');
         this.audio.pickup();
-        this.fx.sparkle(e.obj.position.x, 1.2, e.obj.position.z, 0x4dff9a);
+        this.fx.sparkle(e.obj.position.x, 1.2, e.obj.position.z, 0x4db8ff);
         return true;
       case 'coin':
         this.coins++;
