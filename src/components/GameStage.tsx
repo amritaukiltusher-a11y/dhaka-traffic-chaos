@@ -24,7 +24,7 @@ interface Toast {
 }
 
 const BAD = new Set(['crash', 'pothole', 'pedestrian', 'lowBattery', 'pursuit']);
-const GOOD = new Set(['pickup', 'nearMiss', 'shield', 'boost', 'chai']);
+const GOOD = new Set(['zone', 'pickup', 'nearMiss', 'shield', 'boost', 'chai']);
 const DIFFICULTIES: Difficulty[] = ['easy', 'normal', 'hard'];
 const WEATHER_ICON = { night: '🌙', dusk: '🌇', rain: '🌧️' } as const;
 
@@ -438,6 +438,16 @@ export default function GameStage({ startSignal }: { startSignal: number }) {
       )}
 
       {/* HUD */}
+      {playing && hud && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-[5] transition-opacity duration-300"
+          style={{
+            opacity: Math.max(0, Math.min(0.75, (hud.speed - 70) / 90 + (hud.boosting ? 0.25 : 0))),
+            background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.75) 100%)'
+          }}
+        />
+      )}
       {playing && hud && <Hud hud={hud} />}
 
       {/* event toast */}

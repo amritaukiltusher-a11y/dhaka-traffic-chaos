@@ -1,6 +1,6 @@
 import type { HudState } from '../game/engine';
 import { fmtDistance, fmtMoney, fmtNum, fmtTime, digits } from '../lib/format';
-import { useLang } from '../i18n';
+import { useLang, type Key } from '../i18n';
 
 function Bar({ value, color, label, valueText }: { value: number; color: string; label: string; valueText: string }) {
   const pct = Math.max(0, Math.min(100, value));
@@ -53,7 +53,7 @@ export default function Hud({ hud }: { hud: HudState }) {
           </span>
           <span>{fmtTime(hud.time, lang)}</span>
           <span>
-            {WEATHER_ICON[hud.weather]} {t('hud.level')} {digits(hud.level, lang)}
+            {WEATHER_ICON[hud.weather]} {t('hud.level')} {digits(hud.level, lang)} · 📍 {t(`zone.${hud.zone}` as Key)}
           </span>
         </div>
         <Bar value={hud.battery} color={batteryColor} label={t('hud.battery')} valueText={`${digits(Math.round(hud.battery), lang)}%`} />

@@ -17,7 +17,7 @@ export default defineConfig({
       manifest: {
         name: 'Dhaka Traffic Chaos',
         short_name: 'Traffic Chaos',
-        description: 'ঢাকার রাস্তার ব্যঙ্গাত্মক থ্রিডি ড্রাইভিং গেম (কাল্পনিক)।',
+        description: 'ঢাকার রাস্তার ব্যঙ্গাত্মক থ্রিডি ড্রাইভিং গেম।',
         lang: 'bn',
         start_url: base,
         scope: base,

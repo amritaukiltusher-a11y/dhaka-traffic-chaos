@@ -72,3 +72,7 @@ recent Windows/macOS); otherwise you still get the cartoon sound and the text bu
 ## 3D visuals
 
 - Real-time sun shadows on **High** quality (cheap blob shadow on Low), soft particles (exhaust, boost flame, wheel dust, crash sparks, pickup sparkles), speed streaks, speed-based FOV, camera roll into turns, crash kick, body roll/pitch and suspension bounce on the auto. Code: `src/game/fx.ts`.
+
+## Areas
+
+Every 2 levels the route enters a new part of Dhaka (Mirpur → Farmgate → Motijheel → Gulshan → Banani) with a tinted sky, a toast and a HUD label. Also: speed vignette, headlight pool, twinkling stars.

@@ -55,6 +55,10 @@ export const EVENT_MESSAGES: Record<EventType, Pool> = {
     bn: ['গোধূলির ঢাকা — আকাশ কমলা, রাস্তা জমজমাট!', 'বৃষ্টি শুরু! রাস্তা পিচ্ছিল, সাবধানে!'],
     en: ['Dhaka at dusk — orange sky, busy streets!', 'Rain has started! Slippery road, careful!']
   },
+  zone: {
+    bn: ['মিরপুর রোড — শুরুর জ্যাম!', 'ফার্মগেট! বাস আর মানুষের ঢল!', 'মতিঝিল — অফিসপাড়ার হর্নের কনসার্ট!', 'গুলশান — চকচকে রাস্তা, দামি গাড়ি!', 'বনানী — রাতের আলোয় ঝলমল!'],
+    en: ['Mirpur Road — the warm-up jam!', 'Farmgate! A flood of buses and people!', 'Motijheel — the office-hour horn concert!', 'Gulshan — shiny roads, fancy cars!', 'Banani — glittering night lights!']
+  },
   shield: {
     bn: ['জুগাড় শিল্ড চালু! কিছুক্ষণ অদৃশ্য ভান করুন।', 'জুগাড় শিল্ড! ধাক্কা আজ ছুটিতে।'],
     en: ['Jugaad Shield on! Pretend to be invisible for a bit.', 'Jugaad Shield! Crashes are on holiday.']
@@ -63,7 +67,7 @@ export const EVENT_MESSAGES: Record<EventType, Pool> = {
 
 export function eventMessage(type: EventType, lang: Lang, value?: number): string {
   const pool = EVENT_MESSAGES[type][lang];
-  const base = type === 'weather' ? pool[Math.min(pool.length, Math.max(1, value ?? 1)) - 1] : pool[Math.floor(Math.random() * pool.length)];
+  const base = (type === 'weather' || type === 'zone') ? pool[Math.min(pool.length, Math.max(1, value ?? 1)) - 1] : pool[Math.floor(Math.random() * pool.length)];
   if (type === 'levelUp' && value) return `${base} ${value}`;
   return base;
 }
@@ -171,9 +175,9 @@ const OVER_POOLS: Record<GameResult['reason'] | 'generic', Headline[]> = {
 export function resultHeadline(result: GameResult): Headline {
   const specific = OVER_POOLS[result.reason];
   const extra: Headline[] = [];
-  if (result.collisions === 0) extra.push({ bn: 'ধাক্কাহীন যাত্রা! এমন চালক নাকি কাল্পনিক জগতেও বিরল', en: 'A crash-free ride! Rare even in a fictional world' });
+  if (result.collisions === 0) extra.push({ bn: 'ধাক্কাহীন যাত্রা! এমন চালক ঢাকায় বিরল', en: 'A crash-free ride! Rare in Dhaka' });
   if (result.collisions >= 8) extra.push({ bn: 'এত ধাক্কা! গাড়ির রংমিস্ত্রি আজ ব্যস্ত', en: 'So many bumps! The body-shop is busy today' });
-  if (result.score >= 3000) extra.push({ bn: 'স্কোরে আকাশছোঁয়া! গুজব: মেয়র নাকি চাকরি অফার করেছেন (কাল্পনিক)', en: 'Sky-high score! Rumour: the mayor offered a job (fictional)' });
+  if (result.score >= 3000) extra.push({ bn: 'স্কোরে আকাশছোঁয়া! গুজব: মেয়র নাকি চাকরি অফার করেছেন', en: 'Sky-high score! Rumour: the mayor offered a job' });
   const pool = [...specific, ...OVER_POOLS.generic, ...extra];
   return pool[Math.floor(Math.random() * pool.length)];
 }

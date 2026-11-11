@@ -32,7 +32,8 @@ export type EventType =
   | 'pursuit'
   | 'shield'
   | 'chai'
-  | 'weather';
+  | 'weather'
+  | 'zone';
 
 export interface GameEvent {
   type: EventType;
@@ -58,6 +59,7 @@ export interface HudState {
   chai: number; // seconds of free-boost left
   weather: Weather;
   coins: number; // taka collected this run
+  zone: number; // 0..4, which part of Dhaka we are in
 }
 
 export interface GameResult {
@@ -143,6 +145,9 @@ const WEATHER_LOOK: Record<Weather, { bg: number; near: number; far: number; sky
   rain: { bg: 0x1b2533, near: 28, far: 135, sky: 0x7f93b5, ground: 0x151a22, hemi: 1.0, sun: 0x9fb0cc, sunI: 0.35, road: 0x8d97a8 }
 };
 const RAIN_DROPS = 260;
+/** Areas of Dhaka the player drives through as the level rises (2 levels each). `tint` colours the sky and fog. */
+const ZONE_TINT = [0x000000, 0x2a1a55, 0x4a2a10, 0x0d3a4a, 0x4a1030];
+const zoneOf = (level: number) => Math.min(4, Math.floor((level - 1) / 2));
 const CRASH_DAMAGE: Partial<Record<Kind, number>> = {
   bus: 450_000,
   truck: 520_000,
@@ -614,6 +619,8 @@ export class DriveGame {
   private fxT = 0;
   private baseFov = 58;
   private blob!: THREE.Mesh;
+  private beam!: THREE.Mesh;
+  private zone = 0;
   private spawnT = 0;
   private pickupT = 5;
   private loadout: Loadout = { battery: 0, magnet: 0, shield: 0, chai: 0, paint: 0x237d33 };
@@ -722,6 +729,34 @@ export class DriveGame {
     this.blob.scale.set(0.75, 1.25, 1);
     this.blob.position.y = 0.03;
     this.scene.add(this.blob);
+    const bc = document.createElement('canvas');
+    bc.width = 64;
+    bc.height = 128;
+    const bg2 = bc.getContext('2d');
+    if (bg2) {
+      const v = bg2.createLinearGradient(0, 128, 0, 0);
+      v.addColorStop(0, 'rgba(255,240,200,0.95)');
+      v.addColorStop(1, 'rgba(255,240,200,0)');
+      bg2.fillStyle = v;
+      bg2.fillRect(0, 0, 64, 128);
+      bg2.globalCompositeOperation = 'destination-in';
+      const hz = bg2.createLinearGradient(0, 0, 64, 0);
+      hz.addColorStop(0, 'rgba(0,0,0,0)');
+      hz.addColorStop(0.5, 'rgba(0,0,0,1)');
+      hz.addColorStop(1, 'rgba(0,0,0,0)');
+      bg2.fillStyle = hz;
+      bg2.fillRect(0, 0, 64, 128);
+    }
+    const bt = new THREE.CanvasTexture(bc);
+    bt.colorSpace = THREE.SRGBColorSpace;
+    this.textures.push(bt);
+    this.beam = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.6, 15),
+      new THREE.MeshBasicMaterial({ map: bt, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })
+    );
+    this.beam.rotation.x = -Math.PI / 2;
+    this.beam.position.set(0, 0.07, -8.5);
+    this.scene.add(this.beam);
     this.applyQuality();
 
     this.shieldMesh = new THREE.Mesh(new THREE.SphereGeometry(2.1, 18, 12), new THREE.MeshBasicMaterial({ color: 0x4de1ff, transparent: true, opacity: 0.22, depthWrite: false }));
@@ -909,7 +944,7 @@ export class DriveGame {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    this.stars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false }));
+    this.stars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true }));
     this.scene.add(this.stars);
   }
 
@@ -946,6 +981,7 @@ export class DriveGame {
     fog.color.setHex(l.bg);
     fog.near = l.near;
     fog.far = l.far;
+    this.applyZoneLook();
     this.hemi.color.setHex(l.sky);
     this.hemi.groundColor.setHex(l.ground);
     this.hemi.intensity = l.hemi;
@@ -955,6 +991,14 @@ export class DriveGame {
     this.moon.visible = w === 'night';
     this.stars.visible = w === 'night';
     this.rain.visible = w === 'rain';
+  }
+
+  /** blends the area tint into sky and fog on top of the weather look */
+  private applyZoneLook() {
+    const l = WEATHER_LOOK[this.weather];
+    const bg = new THREE.Color(l.bg).lerp(new THREE.Color(ZONE_TINT[this.zone]), this.zone === 0 ? 0 : 0.35);
+    (this.scene.background as THREE.Color).copy(bg);
+    (this.scene.fog as THREE.Fog).color.copy(bg);
   }
 
   private pickWeather(): Weather {
@@ -1200,6 +1244,7 @@ export class DriveGame {
     this.comboT = 0;
     this.bestCombo = 0;
     this.nearMisses = 0;
+    this.zone = 0;
     this.setWeather(demo ? 'night' : this.pickWeather());
     this.lowWarned = false;
     this.pursuitWarned = false;
@@ -1455,7 +1500,12 @@ export class DriveGame {
     const newLevel = Math.min(10, 1 + Math.floor(this.time / 18));
     if (newLevel > this.level && !demo) {
       this.level = newLevel;
-      this.emit('levelUp', newLevel);
+      const z = zoneOf(newLevel);
+      if (z !== this.zone) {
+        this.zone = z;
+        this.applyZoneLook();
+        this.emit('zone', z + 1);
+      } else this.emit('levelUp', newLevel);
       this.audio.levelUp();
     }
     this.level = demo ? 2 : this.level;
@@ -1793,7 +1843,8 @@ export class DriveGame {
       combo: this.combo,
       chai: this.chai,
       weather: this.weather,
-      coins: this.coins
+      coins: this.coins,
+      zone: this.zone
     });
   }
 
@@ -1821,6 +1872,9 @@ export class DriveGame {
     }
     this.headLight.position.set(this.px, 2.2, -5);
     this.blob.position.x = this.px;
+    this.beam.position.x = this.px;
+    (this.beam.material as THREE.MeshBasicMaterial).opacity = this.weather === 'dusk' ? 0.1 : this.weather === 'rain' ? 0.4 : 0.32;
+    (this.stars.material as THREE.PointsMaterial).opacity = 0.78 + Math.sin(t * 2.3) * 0.22;
     this.sunLight.target.position.x = this.px;
 
     // particles: exhaust, boost flame, wheel dust
